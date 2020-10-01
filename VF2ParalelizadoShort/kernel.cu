@@ -2,7 +2,7 @@ const static int maxv = 10;
 const static int maxe = 20;
 const int MAX_GRAPHS_DB = 20;
 const int MAX_GRAPHS_QUERY = 10;
-const int NBLOCKS = 1, NTHREADS = 5;
+const int NBLOCKS = 1, NTHREADS = 2;
 
 #include "head.h"
 #include "class.h"
@@ -31,6 +31,9 @@ int sizeAllPairs, sizeCandiPairs;
 
 __device__
 Graph pat[NTHREADS], g[NTHREADS], revpat[NTHREADS], revg[NTHREADS];
+__device__
+int contador = 0;
+
 
 void init()
 {
@@ -222,8 +225,8 @@ Graph* alocaGraph(Graph Grafo[MAX_GRAPHS_DB], int GraphSize) {
 		GraphHost[k].vn = Grafo[k].vn;
 	}
 
-	cudaMalloc((void **)&GraphCUDA, DBGraphSize * sizeof(Graph));
-	cudaMemcpy(GraphCUDA, GraphHost, (sizeof(Graph) * DBGraphSize), cudaMemcpyHostToDevice);
+	cudaMalloc((void **)&GraphCUDA, GraphSize * sizeof(Graph));
+	cudaMemcpy(GraphCUDA, GraphHost, (sizeof(Graph) * GraphSize), cudaMemcpyHostToDevice);
 
 	return GraphCUDA;
 }
@@ -804,14 +807,18 @@ bool dfs(const State &s, const int threadId)
 	int *allPairsFirst, *allPairsSecond;
 	int *candiPairsFirst, *candiPairsSecond;
 
+	//printf("threadId %d contador %d \n", threadId, contador);
+
+	contador++;
+
 	// Matched
-	//printf("s.TAM %d pat.vn %d \n", s.TAM, pat.vn);
+	//printf("s.TAM %d pat.vn %d \n", s.TAM, pat[threadId].vn);
 	if ((int)s.TAM == pat[threadId].vn)
 	{		
 		if (FinalCheck(s, threadId))
 		{
 			return 1;
-		}
+		}		
 	}
 
 	// Generate Pair(n,m)
@@ -836,7 +843,7 @@ bool dfs(const State &s, const int threadId)
 	memcpy(vecSecond, candiPairsSecond, sizeCandiPairs * sizeof(int));
 
 	bool ret = false;
-	//printf("sizeVec %d \n", sizeVec);
+	//printf("threadId %d sizeVec %d \n", threadId, sizeVec);
 	// Next recursive	
 	for (int i = 0;i < sizeVec;i++)
 	{
@@ -899,19 +906,19 @@ bool dfs(const State &s, const int threadId)
 }
 
 __device__
-bool query(const int threadId)
+bool query(const int threadId, const State &s)
 {
-	State s = State();
-	s.init();
-	
+	//printf("Referencia s => %d \n", &s);
+
 	return dfs(s, threadId);
 }
 
 __global__
 void solve(Graph *QueryGraph, int QueryGraphSize, Graph *DBGraph, int DBGraphSize,char *QueryPath, int QueryPathSize, int *QueryPathPointer)
 {
-	int matches = 0;
-	Graph pat, g, revpat, revg;
+	int matches = 0, uid;
+	//State s[NTHREADS];
+	State s;
 
 	if (threadIdx.x == 0)
 		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", DBGraphSize, QueryGraphSize, QueryPathSize);
@@ -925,29 +932,31 @@ void solve(Graph *QueryGraph, int QueryGraphSize, Graph *DBGraph, int DBGraphSiz
 	{
 		for (int j = threadIdx.x;j < QueryGraphSize;j += NTHREADS) {
 			matches = 0;
-			
-			pat = QueryGraph[j];
 
-			GenRevGraph(pat, revpat);
+			//s[threadIdx.x].init();
+			s.init();
+
+			pat[threadIdx.x] = QueryGraph[j];
+
+			GenRevGraph(pat[threadIdx.x], revpat[threadIdx.x]);
 
 			for (int x = 0; x < DBGraphSize; x++)
 			{
-				g = DBGraph[x];
+				g[threadIdx.x] = DBGraph[x];
 
 				//printf("pat.vn %d  g.vn %d pat.en %d g.en %d \n", pat.vn, g.vn, pat.en, g.en);
-				if (pat.vn > g.vn || pat.en > g.en) continue;
+				if (pat[threadIdx.x].vn > g[threadIdx.x].vn || pat[threadIdx.x].en > g[threadIdx.x].en) continue;
 
-				GenRevGraph(g, revg);
+				GenRevGraph(g[threadIdx.x], revg[threadIdx.x]);
 
-				if (query(threadIdx.x)) // Matched
+				if (query(threadIdx.x, s)) // Matched
 				{
 					matches++;
 				}
 			}
 			
 			printf("%s %d Matches found %d \n", QueryPath, j , matches);
-		}
-		
+		}		
 	}
 }
 
@@ -1028,9 +1037,9 @@ void beforeSolve() {
 	}
 
 Error:
-	cudaFree(QueryGraphCUDA);
+	/*cudaFree(QueryGraphCUDA);
 	cudaFree(DBGraphCUDA);
-	cudaFree(QueryPathCUDA);
+	cudaFree(QueryPathCUDA);*/
 }
 
 int main()

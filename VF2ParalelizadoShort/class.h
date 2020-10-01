@@ -128,15 +128,6 @@ struct State // State of dfs matching
 	__device__
 	void init() {
 		TAM = 0;
-		/*first = (short int*)malloc(maxv * sizeof(short int));
-		second= (short int*)malloc(maxv * sizeof(short int));
-		core1 = (short int*)malloc(maxv * sizeof(short int));
-		core2 = (short int*)malloc(maxv * sizeof(short int));
-		in1 = (bool*)malloc(maxv * sizeof(bool));
-		in2 = (bool*)malloc(maxv * sizeof(bool));
-		out1= (bool*)malloc(maxv * sizeof(bool));
-		out2= (bool*)malloc(maxv * sizeof(bool));*/
-
 		memset(core1, -1, maxv * sizeof(short int));
 		memset(core2, -1, maxv * sizeof(short int));
 		memset(in1, 0, maxv * sizeof(bool));

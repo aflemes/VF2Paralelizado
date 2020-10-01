@@ -6,7 +6,7 @@ void input();
 __device__
 void printGraph(Graph Graph[], int size);
 __device__
-bool query(Graph &pat, const int threadId);
+bool query(const int threadId);
 __device__
 bool dfs(const State &s, const int threadId);
 __device__
