@@ -1,7 +1,7 @@
 const static int maxv = 10;
 const static int maxe = 20;
-const int MAX_GRAPHS_DB = 53;
-const int MAX_GRAPHS_QUERY = 10;
+const int MAX_GRAPHS_DB = 1;
+const int MAX_GRAPHS_QUERY = 4;
 const int NBLOCKS = 1, NTHREADS = 2;
 
 #include "head.h"
@@ -15,7 +15,7 @@ const char *QueryPath[MAX_GRAPHS_QUERY]; // Query file path vector
 int QueryPathPointer[MAX_GRAPHS_QUERY];
 int DBGraphSize, QueryGraphSize, QueryPathSize;
 
-Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_DB], *vec;
+Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_QUERY], *vec;
 
 __device__
 int pred1[maxv], pred2[maxv],succ1[maxv], succ2[maxv],m1[maxv], m2[maxv], tin1[maxv], tin2[maxv];
@@ -74,8 +74,7 @@ void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 		if (buff == "t # -1")
 		{
 			eof = true;
-			graphSize++;
-			vec[graphSize].aloca();
+			graphSize++;			
 			break;
 		}
 		if (buff[0] == 't')
@@ -804,7 +803,7 @@ bool dfs(const State &s, const int threadId)
 	int *allPairsFirst, *allPairsSecond;
 	int *candiPairsFirst, *candiPairsSecond;
 
-	//printf("threadId %d contador %d \n", threadId, contador);
+	printf("threadId %d contador %d ref s => %d\n", threadId, contador, &s);
 
 	contador++;
 
@@ -914,8 +913,7 @@ __global__
 void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP)
 {
 	int matches = 0;
-	//State s[NTHREADS];
-	State s;
+	State s[NTHREADS];
 
 	if (threadIdx.x == 0)
 		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", sizeDB, sizeQuery, sizeQueryP);
@@ -930,8 +928,8 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 		for (int j = threadIdx.x;j < sizeQuery;j += NTHREADS) {
 			matches = 0;
 
-			//s[threadIdx.x].init();
-			s.init();
+			s[threadIdx.x].init();
+			
 
 			pat[threadIdx.x] = QueryGraph[j];
 
@@ -946,7 +944,7 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 
 				GenRevGraph(g[threadIdx.x], revg[threadIdx.x]);
 
-				if (query(threadIdx.x, s)) // Matched
+				if (query(threadIdx.x, s[threadIdx.x])) // Matched
 				{
 					matches++;
 				}
@@ -1018,7 +1016,7 @@ void beforeSolve() {
 	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize);
 	
 	//is used in host code (i.e. running on the CPU) when it is desired that CPU activity wait on the completion of any pending GPU activity
-	cudaThreadSynchronize();
+	//cudaThreadSynchronize();
 
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
