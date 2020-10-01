@@ -102,7 +102,7 @@ public:
 	Vertex *vtx; // 0 to vn-1
 	Edge *edge; // 0 to en-1
 };
-__device__
+
 struct State // State of dfs matching
 {
 	// Same means with the paper

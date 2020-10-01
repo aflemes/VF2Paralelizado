@@ -1,6 +1,6 @@
 const static int maxv = 10;
 const static int maxe = 20;
-const int MAX_GRAPHS_DB = 20;
+const int MAX_GRAPHS_DB = 53;
 const int MAX_GRAPHS_QUERY = 10;
 const int NBLOCKS = 1, NTHREADS = 2;
 
@@ -13,10 +13,9 @@ const int NBLOCKS = 1, NTHREADS = 2;
 
 const char *QueryPath[MAX_GRAPHS_QUERY]; // Query file path vector
 int QueryPathPointer[MAX_GRAPHS_QUERY];
-int QueryPathSize = 0;
+int DBGraphSize, QueryGraphSize, QueryPathSize;
 
 Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_DB], *vec;
-int DBGraphSize, QueryGraphSize;
 
 __device__
 int pred1[maxv], pred2[maxv],succ1[maxv], succ2[maxv],m1[maxv], m2[maxv], tin1[maxv], tin2[maxv];
@@ -44,6 +43,7 @@ void init()
 
 string dataset() {
 	string dbPath = "Data/Q10e10.min.data";
+	QueryPathSize = 0;
 
 	QueryPath[QueryPathSize] = "Data/Q4.min.my";
 	QueryPathPointer[QueryPathSize] = strlen(QueryPath[QueryPathSize]);
@@ -52,7 +52,7 @@ string dataset() {
 	return dbPath;
 }
 
-void ReadFile(string path, int &graphSize)
+void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 {
 	bool eof = false;
 	graphSize = 0;
@@ -60,7 +60,7 @@ void ReadFile(string path, int &graphSize)
 	ifstream fin;
 	fin.open(path.c_str());
 
-	vec = (Graph*)malloc(MAX_GRAPHS_DB * sizeof(Graph));
+	vec = (Graph*)malloc(MAX_GRAPHS * sizeof(Graph));
 	vec[graphSize].aloca();
 
 	string buff;
@@ -108,7 +108,7 @@ void ReadFile(string path, int &graphSize)
 
 void ReadDB(string path)
 {
-	ReadFile(path, DBGraphSize);
+	ReadFile(path, DBGraphSize, MAX_GRAPHS_DB);
 
 	for (int i = 0; i < DBGraphSize;i++) {
 		DBGraph[i].en = vec[i].en;
@@ -122,7 +122,7 @@ void ReadDB(string path)
 
 void ReadQuery(string path)
 {
-	ReadFile(path, QueryGraphSize);
+	ReadFile(path, QueryGraphSize, MAX_GRAPHS_QUERY);
 
 	for (int i = 0; i < QueryGraphSize;i++) {
 		QueryGraph[i].en = vec[i].en;
@@ -395,10 +395,7 @@ void CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *
 	candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
 	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));
 
-	int value1, value2;
 	for (int i = 0; i < sizeAllPairs; i++) {
-		value1 = allPairsFirst[i], value2 = allPairsSecond[i];
-
 		if (check(s, allPairsFirst[i], allPairsSecond[i], threadId)) {
 			candiPairsFirst[sizeCandiPairs] = allPairsFirst[i];
 			candiPairsSecond[sizeCandiPairs++] = allPairsSecond[i];
@@ -914,23 +911,23 @@ bool query(const int threadId, const State &s)
 }
 
 __global__
-void solve(Graph *QueryGraph, int QueryGraphSize, Graph *DBGraph, int DBGraphSize,char *QueryPath, int QueryPathSize, int *QueryPathPointer)
+void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP)
 {
-	int matches = 0, uid;
+	int matches = 0;
 	//State s[NTHREADS];
 	State s;
 
 	if (threadIdx.x == 0)
-		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", DBGraphSize, QueryGraphSize, QueryPathSize);
+		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", sizeDB, sizeQuery, sizeQueryP);
 
 	/*printf(" QueryGraph \n");
-	printGraph(QueryGraph, QueryGraphSize);
-	printf(" DBGraph \n");
-	printGraph(DBGraph, DBGraphSize);*/
+	printGraph(QueryGraph, sizeQuery);
+	printf("\n\n\n DBGraph \n\n\n");
+	printGraph(DBGraph, sizeDB);*/
 
-	for (int i = 0;i < (int)QueryPathSize;i++)
+	for (int i = 0;i < (int)sizeQueryP;i++)
 	{
-		for (int j = threadIdx.x;j < QueryGraphSize;j += NTHREADS) {
+		for (int j = threadIdx.x;j < sizeQuery;j += NTHREADS) {
 			matches = 0;
 
 			//s[threadIdx.x].init();
@@ -940,7 +937,7 @@ void solve(Graph *QueryGraph, int QueryGraphSize, Graph *DBGraph, int DBGraphSiz
 
 			GenRevGraph(pat[threadIdx.x], revpat[threadIdx.x]);
 
-			for (int x = 0; x < DBGraphSize; x++)
+			for (int x = 0; x < sizeDB; x++)
 			{
 				g[threadIdx.x] = DBGraph[x];
 
@@ -1018,7 +1015,7 @@ void beforeSolve() {
 	cudaMalloc((void **)&QueryPathPointerCUDA, MAX_GRAPHS_QUERY * sizeof(int));
 	cudaMemcpy(QueryPathPointerCUDA, QueryPathPointer, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
 
-	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, QueryGraphSize, DBGraphCUDA, DBGraphSize, QueryPathCUDA, QueryPathSize, QueryPathPointerCUDA);
+	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize);
 	
 	//is used in host code (i.e. running on the CPU) when it is desired that CPU activity wait on the completion of any pending GPU activity
 	cudaThreadSynchronize();
@@ -1037,9 +1034,9 @@ void beforeSolve() {
 	}
 
 Error:
-	/*cudaFree(QueryGraphCUDA);
+	cudaFree(QueryGraphCUDA);
 	cudaFree(DBGraphCUDA);
-	cudaFree(QueryPathCUDA);*/
+	cudaFree(QueryPathCUDA);
 }
 
 int main()

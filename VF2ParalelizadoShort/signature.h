@@ -1,12 +1,13 @@
 #pragma once
 /*assinatura de metodos*/
+void ReadFile(string path, int &graphSize, int MAX_GRAPHS);
 void ReadDB(string path);
 void ReadQuery(string path);
 void input();
 __device__
 void printGraph(Graph Graph[], int size);
 __device__
-bool query(const int threadId);
+bool query(const int threadId, const State &s);
 __device__
 bool dfs(const State &s, const int threadId);
 __device__
@@ -20,7 +21,7 @@ void GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, const i
 __device__
 void CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, const int threadId);
 __device__
-void UpdateState(State &s, int a, int b);
+void UpdateState(State &s, int a, int b, const int threadId);
 __device__
 bool CheckPrev(const State &s, int a, int b);
 __device__
