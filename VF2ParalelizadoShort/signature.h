@@ -7,33 +7,33 @@ void input();
 __device__
 void printGraph(Graph Graph[], int size);
 __device__
-bool query(const int threadId, const State &s);
+bool query(const State &s, VetAuxiliares &vetAux);
 __device__
-bool dfs(const State &s, const int threadId);
+bool dfs(const State &s, VetAuxiliares &vetAux);
 __device__
-bool FinalCheck(const State &s, const int threadId);
+bool FinalCheck(const State &s);
 __device__
-void CalDFSVec(const State &s, const int threadId);
+void CalDFSVec(const State &s, VetAuxiliares &vetAux);
 __device__
-bool check(const State &s, int a, int b,const int threadId);
+bool check(const State &s, int a, int b, VetAuxiliares &vetAux);
 __device__
-void GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, const int threadId);
+int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux);
 __device__
-void CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, const int threadId);
+int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs);
 __device__
-void UpdateState(State &s, int a, int b, const int threadId);
+void UpdateState(State &s, int a, int b);
 __device__
-bool CheckPrev(const State &s, int a, int b);
+bool CheckPrev(const State &s, int a, int b, VetAuxiliares &vetAux);
 __device__
-bool CheckSucc(const State &s, int a, int b);
+bool CheckSucc(const State &s, int a, int b, VetAuxiliares &vetAux);
 __device__
-bool CheckIn(const State &s);
+bool CheckIn(VetAuxiliares &vetAux);
 __device__
-bool CheckOut(const State &s);
+bool CheckOut(VetAuxiliares &vetAux);
 __device__
-bool CheckNew(const State &s);
+bool CheckNew(VetAuxiliares &vetAux);
 __device__
-void CalCheckVec(const State &s, int a, int b, const int threadId);
+void CalCheckVec(int a, int b, VetAuxiliares &vetAux);
 __device__
 void quicksort(int ls[], int l, int r);
 __device__

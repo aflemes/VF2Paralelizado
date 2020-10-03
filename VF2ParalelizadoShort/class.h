@@ -43,12 +43,12 @@ public:
 	}
 	__device__ __host__
 		void aloca() {
-		head = (int*)malloc(maxe * sizeof(int));
-		vtx = (Vertex*)malloc(maxv * sizeof(Vertex));
-		edge = (Edge*)malloc(maxe * sizeof(Edge));
+			head = (int*)malloc(maxe * sizeof(int));
+			vtx = (Vertex*)malloc(maxv * sizeof(Vertex));
+			edge = (Edge*)malloc(maxe * sizeof(Edge));
 
-		init();
-	}
+			init();
+		}
 	__device__ __host__
 		void init() {		
 
@@ -96,12 +96,20 @@ public:
 	}
 
 public:
-	int *head;	
+	int *head;
 	int vn;
 	int en;
 	Vertex *vtx; // 0 to vn-1
 	Edge *edge; // 0 to en-1
 };
+struct VetAuxiliares
+{
+	int pred1[maxv], pred2[maxv], succ1[maxv], succ2[maxv], m1[maxv], m2[maxv], tin1[maxv], tin2[maxv];
+	int tout1[maxv], tout2[maxv], n1[maxv], n2[maxv], ns1[maxv], ns2[maxv], t1[maxv], t2[maxv];
+	int sizeM1 = 0, sizeM2 = 0, sizeN1 = 0, sizeN2 = 0, sizeNS1 = 0, sizeNS2 = 0, sizeT1 = 0, sizeT2 = 0, sizeTout1 = 0, sizeTout2 = 0;
+	int sizePred1 = 0, sizePred2 = 0, sizeSucc1 = 0, sizeSucc2 = 0, sizeTin1 = 0, sizeTin2 = 0;
+};
+
 
 struct State // State of dfs matching
 {
@@ -111,10 +119,10 @@ struct State // State of dfs matching
 	short int TAM;
 	short int core1[maxv];
 	short int core2[maxv];
-	bool in1[maxv];
-	bool in2[maxv];
-	bool out1[maxv];
-	bool out2[maxv];
+	short int in1[maxv];
+	short int in2[maxv];
+	short int out1[maxv];
+	short int out2[maxv];
 	__device__
 	State()
 	{
@@ -130,9 +138,9 @@ struct State // State of dfs matching
 		TAM = 0;
 		memset(core1, -1, maxv * sizeof(short int));
 		memset(core2, -1, maxv * sizeof(short int));
-		memset(in1, 0, maxv * sizeof(bool));
-		memset(in2, 0, maxv * sizeof(bool));
-		memset(out1, 0, maxv * sizeof(bool));
-		memset(out2, 0, maxv * sizeof(bool));
+		memset(in1, 0, maxv * sizeof(short int));
+		memset(in2, 0, maxv * sizeof(short int));
+		memset(out1, 0, maxv * sizeof(short int));
+		memset(out2, 0, maxv * sizeof(short int));
 	}
 };

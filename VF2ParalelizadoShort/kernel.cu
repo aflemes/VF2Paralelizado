@@ -1,7 +1,7 @@
-const static int maxv = 10;
+const static int maxv = 20;
 const static int maxe = 20;
-const int MAX_GRAPHS_DB = 1;
-const int MAX_GRAPHS_QUERY = 4;
+const int MAX_GRAPHS_DB = 55;
+const int MAX_GRAPHS_QUERY = 2;
 const int NBLOCKS = 1, NTHREADS = 2;
 
 #include "head.h"
@@ -10,23 +10,11 @@ const int NBLOCKS = 1, NTHREADS = 2;
 
 #define swap(A,B) { float temp = A; A = B; B = temp;}
 
-
 const char *QueryPath[MAX_GRAPHS_QUERY]; // Query file path vector
 int QueryPathPointer[MAX_GRAPHS_QUERY];
 int DBGraphSize, QueryGraphSize, QueryPathSize;
 
 Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_QUERY], *vec;
-
-__device__
-int pred1[maxv], pred2[maxv],succ1[maxv], succ2[maxv],m1[maxv], m2[maxv], tin1[maxv], tin2[maxv];
-__device__
-int tout1[maxv], tout2[maxv],n1[maxv], n2[maxv], ns1[maxv], ns2[maxv], t1[maxv], t2[maxv];
-__device__
-int sizeM1 = 0, sizeM2 = 0, sizeN1 = 0, sizeN2 = 0, sizeNS1 = 0, sizeNS2 = 0, sizeT1 = 0, sizeT2 = 0, sizeTout1 = 0, sizeTout2 = 0;
-__device__
-int sizePred1 = 0, sizePred2 = 0, sizeSucc1 = 0, sizeSucc2 = 0, sizeTin1 = 0, sizeTin2 = 0;;
-__device__
-int sizeAllPairs, sizeCandiPairs;
 
 __device__
 Graph pat[NTHREADS], g[NTHREADS], revpat[NTHREADS], revg[NTHREADS];
@@ -108,12 +96,12 @@ void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 void ReadDB(string path)
 {
 	ReadFile(path, DBGraphSize, MAX_GRAPHS_DB);
-
+	
 	for (int i = 0; i < DBGraphSize;i++) {
 		DBGraph[i].en = vec[i].en;
 		DBGraph[i].vn = vec[i].vn;
 
-		DBGraph[i].vtx = vec[i].vtx;
+		DBGraph[i].vtx  = vec[i].vtx;
 		DBGraph[i].edge = vec[i].edge;
 		DBGraph[i].head = vec[i].head;
 	}
@@ -127,10 +115,9 @@ void ReadQuery(string path)
 		QueryGraph[i].en = vec[i].en;
 		QueryGraph[i].vn = vec[i].vn;
 
-		QueryGraph[i].vtx = vec[i].vtx;
+		QueryGraph[i].vtx  = vec[i].vtx;
 		QueryGraph[i].edge = vec[i].edge;
 		QueryGraph[i].head = vec[i].head;
-
 	}
 
 }
@@ -185,7 +172,7 @@ char* allocaString(const char **str, int size) {
 	return localCUDA;
 }
 
-Graph* alocaGraph(Graph Grafo[MAX_GRAPHS_DB], int GraphSize) {
+Graph* alocaGraph(Graph *Grafo, int GraphSize) {
 	Graph *GraphHost, *GraphCUDA;
 
 	GraphHost = (Graph*)malloc(GraphSize * sizeof(Graph));
@@ -230,426 +217,6 @@ Graph* alocaGraph(Graph Grafo[MAX_GRAPHS_DB], int GraphSize) {
 	return GraphCUDA;
 }
 
-__device__
-bool FinalCheck(const State &s, const int threadId)
-{
-	for (int i = 0;i < pat[threadId].en;i++)
-	{
-		Edge e1 = pat[threadId].edge[i];
-		bool flag = 0;
-
-		for (int j = g[threadId].head[s.core1[e1.u]];~j;j = g[threadId].edge[j].next)
-		{
-			Edge e2 = g[threadId].edge[j];
-
-			if (e1.label == e2.label&&s.core1[e1.v] == e2.v)
-			{
-				flag = 1;
-				break;
-			}
-		}
-		if (!flag) return 0;
-	}
-	return 1;
-}
-__device__
-void CalDFSVec(const State &s, const int threadId)
-{
-	//printf("CalDFSVec %d \n", s.TAM);
-	ClearArrays();
-
-	for (int i = 0; i < s.TAM;i++) {
-		m1[sizeM1++] = s.first[i];
-		m2[sizeM2++] = s.second[i];
-	}
-
-	//printf("CalDFSVec antes quicksort %d %d\n", sizeM1, sizeM2);
-
-	if (sizeM1 > 0 && sizeM2 > 0) {
-		quicksort(m1, 0, sizeM1 - 1);
-		quicksort(m2, 0, sizeM2 - 1);
-	}
-
-	//printf("CalDFSVec antes pat.vn %d\n", pat.vn);
-
-	for (int i = 0; i < pat[threadId].vn; i++) {
-		if (s.out1[i])
-			tout1[sizeTout1++] = i;
-		if (s.in1[i]) {
-			tin1[sizeTin1++] = i;
-		}
-		n1[sizeN1++] = i;
-	}
-
-	//printf("CalDFSVec antes g.vn %d\n", g.vn);
-
-	for (int i = 0; i < g[threadId].vn; i++) {
-		if (s.out2[i])
-			tout2[sizeTout2++] = i;
-		if (s.in2[i])
-			tin2[sizeTin2++] = i;
-		n2[sizeN2++] = i;
-	}
-
-	//printf("CalDFSVec antes metodos \n");
-
-	sizeT1 = Union(tin1, tout1, t1, sizeTin1, sizeTout1);
-
-	sizeT2 = Union(tin1, tout2, t2, sizeTin1, sizeTout2);
-
-	int tmp[maxv], sizeTmp;
-
-	sizeTmp = Difference(n1, m1, tmp, sizeN1, sizeM1);
-
-	sizeNS1 = Difference(tmp, t1, ns1, sizeTmp, sizeT1);
-
-	sizeTmp = Difference(n2, m2, tmp, sizeN2, sizeM2);
-
-	sizeNS2 = Difference(tmp, t2, ns2, sizeTmp, sizeT2);
-
-	//printf("fim CalDFSVec \n");
-}
-
-__device__
-bool check(const State &s, int a, int b, const int threadId)
-{
-	//printf("check \n");
-	// Check vertex label
-	if (pat[threadId].vtx[a].label != g[threadId].vtx[b].label) return 0;
-
-	// Check edge label
-	CalCheckVec(s, a, b, threadId);
-
-	// Feasibility
-	if (CheckPrev(s, a, b) && CheckSucc(s, a, b) && CheckIn(s) && CheckOut(s) && CheckNew(s)) return 1;
-	return 0;
-}
-
-__device__
-void GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, const int threadId)
-{
-	//printf("GenPairs \n");
-
-	CalDFSVec(s, threadId);
-
-	if (sizeTout1 > 0 && sizeTout2 > 0) {
-		allPairsFirst = (int*)malloc(sizeTout1 * sizeTout2 * sizeof(int));
-		allPairsSecond = (int*)malloc(sizeTout1 * sizeTout2 * sizeof(int));
-	}
-
-	for (int i = 0; i < (int)sizeTout1; i++)
-		for (int j = 0; j < (int)sizeTout2; j++) {
-			allPairsFirst[sizeAllPairs] = tout1[i], allPairsSecond[sizeAllPairs++] = tout2[j];
-		}
-
-	//printf("1 -> sizeAllPairs %d \n", sizeAllPairs);
-	if (sizeAllPairs > 0)
-	{
-		return;
-	}
-
-	if (sizeTin1 > 0 && sizeTin2 > 0) {
-		allPairsFirst = (int*)malloc(sizeTin1 * sizeTin2 * sizeof(int));
-		allPairsSecond = (int*)malloc(sizeTin1 * sizeTin2 * sizeof(int));
-	}
-
-	for (int i = 0; i < (int)sizeTin1; i++)
-		for (int j = 0; j < (int)sizeTin2; j++) {
-			allPairsFirst[sizeAllPairs] = tin1[i], allPairsSecond[sizeAllPairs++] = tin2[j];
-		}
-
-	//printf("2 -> sizeAllPairs %d \n", sizeAllPairs);
-	if (sizeAllPairs > 0)
-	{
-		return;
-	}
-
-	int temp1[maxv], temp2[maxv];
-	int sizeTemp1 = 0, sizeTemp2 = 0;
-
-	for (int i = 0; i < pat[threadId].vn; i++)
-		if (s.core1[i] == -1)
-			temp1[sizeTemp1++] = i;
-	
-	for (int i = 0; i < g[threadId].vn; i++)
-		if (s.core2[i] == -1)
-			temp2[sizeTemp2++] = i;
-
-	allPairsFirst = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
-	allPairsSecond = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
-
-	for (int i = 0; i < sizeTemp1; i++)
-		for (int j = 0; j < sizeTemp2; j++) {
-			allPairsFirst[sizeAllPairs] = temp1[i], allPairsSecond[sizeAllPairs++] = temp2[j];
-		}
-
-	//printf("fim GenPairs %d \n", sizeAllPairs);
-}
-__device__
-void CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, const int threadId)
-{
-	//printf("CheckPairs \n");
-	sizeCandiPairs = 0;
-
-	candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
-	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));
-
-	for (int i = 0; i < sizeAllPairs; i++) {
-		if (check(s, allPairsFirst[i], allPairsSecond[i], threadId)) {
-			candiPairsFirst[sizeCandiPairs] = allPairsFirst[i];
-			candiPairsSecond[sizeCandiPairs++] = allPairsSecond[i];
-		}
-	}
-
-	//printf("fim CheckPairs %d \n", sizeCandiPairs);
-}
-__device__
-void UpdateState(State &s, int a, int b, const int threadId)
-{
-		// Update core,in,out
-	for (int i = 0; i < pat[threadId].vn; i++)
-	{
-		s.core1[a] = b;
-		s.in1[a] = 0;
-		s.out1[a] = 0;
-	}
-	for (int i = 0; i < g[threadId].vn; i++)
-	{
-		s.core2[b] = a;
-		s.in2[b] = 0;
-		s.out2[b] = 0;
-	}
-
-	for (int i = pat[threadId].head[a]; ~i; i = pat[threadId].edge[i].next)
-	{
-		int v = pat[threadId].edge[i].v;
-		if (s.core1[v] == -1)
-			s.out1[v] = 1;
-	}
-	// Add new in1
-	for (int i = revpat[threadId].head[a]; ~i; i = revpat[threadId].edge[i].next)
-	{
-		int v = revpat[threadId].edge[i].v;
-		if (s.core1[v] == -1)
-			s.in1[v] = 1;
-	}
-	// Add new out2
-	for (int i = g[threadId].head[b]; ~i; i = g[threadId].edge[i].next)
-	{
-		int v = g[threadId].edge[i].v;
-		if (s.core2[v] == -1)
-			s.out2[v] = 1;
-	}
-	// Add new in2
-	for (int i = revg[threadId].head[b]; ~i; i = revg[threadId].edge[i].next)
-	{
-		int v = revg[threadId].edge[i].v;
-		if (s.core2[v] == -1)
-			s.in2[v] = 1;
-	}
-
-	// Add to s	
-	s.first[s.TAM] = a;
-	s.second[s.TAM] = b;
-	s.TAM++;
-}
-
-__device__
-bool CheckPrev(const State &s, int a, int b)
-{
-	int tmp[maxv], sizeTmp;
-	bool flag;
-
-	sizeTmp = Intersection(m1, pred1, tmp, sizeM1, sizePred1);
-
-	for (int i = 0; i < sizeTmp;i++)
-	{
-		flag = 0;
-		for (int j = 0;j < sizePred2 && !flag;j++)
-			if (s.core1[tmp[i]] == pred2[j])
-			{
-				flag = 1;
-			}
-		if (!flag) return 0;
-	}
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-
-	sizeTmp = Intersection(m2, pred2, tmp, sizeM1, sizePred2);
-
-	for (int i = 0;i < sizeTmp;i++)
-	{
-		flag = 0;
-		for (int j = 0;j < sizePred1 && !flag;j++)
-			if (s.core2[tmp[i]] == pred1[j])
-			{
-				flag = 1;
-			}
-		if (!flag) return 0;
-	}
-
-	return 1;
-}
-__device__
-bool CheckSucc(const State &s, int a, int b)
-{
-	int tmp[maxv], sizeTmp;
-	bool flag;
-
-	sizeTmp = Intersection(m1, succ1, tmp, sizeM1, sizeSucc1);
-
-	for (int i = 0;i < sizeTmp;i++)
-	{
-		flag = 0;
-		for (int j = 0; j < sizeSucc2 && !flag;j++)
-			if (s.core1[tmp[i]] == succ2[j])
-			{
-				flag = 1;
-			}
-		if (!flag) return 0;
-	}
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-
-	sizeTmp = Intersection(m2, succ2, tmp, sizeM2, sizeSucc2);
-
-	for (int i = 0;i < sizeTmp;i++)
-	{
-		flag = 0;
-		for (int j = 0;j < sizeSucc1 && !flag;j++)
-			if (s.core2[tmp[i]] == succ1[j])
-			{
-				flag = 1;
-			}
-		if (!flag) return 0;
-	}
-
-	return 1;
-}
-__device__
-bool CheckIn(const State &s)
-{
-	int tmp[maxv], sizeTmp;
-	int a, b, c, d;
-
-	sizeTmp = Intersection(succ1, tin1, tmp, sizeSucc1, sizeTin1);
-
-	a = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-
-	sizeTmp = Intersection(succ2, tin2, tmp, sizeSucc2, sizeTin2);
-
-	b = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-
-	sizeTmp = Intersection(pred1, tin1, tmp, sizePred1, sizeTin1);
-
-	c = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(pred2, tin2, tmp, sizePred2, sizeTin2);
-
-	d = sizeTmp;
-
-	return (a <= b) && (c <= d);
-}
-__device__
-bool CheckOut(const State &s)
-{
-	int tmp[maxv], sizeTmp;
-	int a, b, c, d;
-
-	sizeTmp = Intersection(succ1, tout1, tmp, sizeSucc1, sizeTout1);
-
-	a = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(succ2, tout2, tmp, sizeSucc2, sizeTout2);
-	b = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(pred1, tout1, tmp, sizePred1, sizeTout1);
-	c = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(pred2, tout2, tmp, sizePred2, sizeTout2);
-	d = sizeTmp;
-
-	return (a <= b) && (c <= d);
-}
-__device__
-bool CheckNew(const State &s)
-{
-	int tmp[maxv], sizeTmp;
-	int a, b, c, d;
-
-	sizeTmp = Intersection(ns1, pred1, tmp, sizeNS1, sizePred1);
-	a = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(ns2, pred2, tmp, sizeNS2, sizePred2);
-	b = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(ns1, succ1, tmp, sizeNS1, sizeSucc1);
-	c = sizeTmp;
-
-	//clear tmp
-	for (int i = 0;i < maxv;i++) tmp[i] = 0;
-	sizeTmp = Intersection(ns2, succ2, tmp, sizeNS2, sizeSucc2);
-	d = sizeTmp;
-
-	return (a <= b) && (c <= d);
-}
-
-__device__
-void CalCheckVec(const State &s, int a, int b, const int threadId)
-{
-	//printf("CalCheckVec \n");
-	// Init
-	sizePred1 = 0, sizePred2 = 0, sizeSucc1 = 0, sizeSucc2 = 0;
-
-	// aPred
-	for (int i = revpat[threadId].head[a]; ~i; i = revpat[threadId].edge[i].next)
-		pred1[sizePred1++] = revpat[threadId].edge[i].v;
-
-	// bPred
-	for (int i = revg[threadId].head[b]; ~i; i = revg[threadId].edge[i].next)
-		pred2[sizePred2++] = revg[threadId].edge[i].v;
-
-	// aSucc
-	for (int i = pat[threadId].head[a]; ~i; i = pat[threadId].edge[i].next)
-		succ1[sizeSucc1++] = pat[threadId].edge[i].v;
-
-	// bSucc
-	for (int i = g[threadId].head[b]; ~i; i = g[threadId].edge[i].next)
-		succ2[sizeSucc2++] = g[threadId].edge[i].v;
-
-	//printf("antes sort %d %d %d %d\n", sizePred1, sizePred2, sizeSucc1, sizeSucc2);
-	//printf(" antes sort => %d %d \n",sizePred1, pred1[0]);
-	// Sort
-	if (sizePred1 > 0) quicksort(pred1, 0, sizePred1 - 1);
-	//printf("a \n");
-	if (sizePred2 > 0) quicksort(pred2, 0, sizePred2 - 1);
-	//printf("b \n");
-	if (sizeSucc1 > 0) quicksort(succ1, 0, sizeSucc1 - 1);
-	//printf("c \n");
-	if (sizeSucc2 > 0) quicksort(succ2, 0, sizeSucc2 - 1);
-
-	//printf("fim CalCheckVec \n");
-}
 __device__
 void quicksort(int ls[], int l, int r) {
 	int i, j, k, p, q;
@@ -775,52 +342,462 @@ int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
 	return x;
 }
 __device__
-void ClearArrays() {
-	//printf("ClearArrays\n");
-
+void ClearArrays(VetAuxiliares &vetAux) {
 	for (int i = 0; i < maxv;i++) {
-		m1[i] = 0, m2[i] = 0;
-		tin1[i] = 0, tin2[i] = 0;
-		tout1[i] = 0, tout2[i] = 0;
-		n1[i] = 0, n2[i] = 0;
-		ns1[i] = 0, ns2[i] = 0;
-		t1[i] = 0, t2[i] = 0;
+		vetAux.m1[i] = 0, vetAux.m2[i] = 0;
+		vetAux.tin1[i] = 0, vetAux.tin2[i] = 0;
+		vetAux.tout1[i] = 0, vetAux.tout2[i] = 0;
+		vetAux.n1[i] = 0, vetAux.n2[i] = 0;
+		vetAux.ns1[i] = 0, vetAux.ns2[i] = 0;
+		vetAux.t1[i] = 0, vetAux.t2[i] = 0;
 	}
 
-	sizeM1 = 0, sizeM2 = 0;
-	sizeTin1 = 0, sizeTin2 = 0;
-	sizeTout1 = 0, sizeTout2 = 0;
-	sizeN1 = 0, sizeN2 = 0;
-	sizeNS1 = 0, sizeNS2 = 0;
-	sizeAllPairs = 0;
-
-	//printf("fim ClearArrays");
+	vetAux.sizeM1 = 0, vetAux.sizeM2 = 0;
+	vetAux.sizeTin1 = 0, vetAux.sizeTin2 = 0;
+	vetAux.sizeTout1 = 0, vetAux.sizeTout2 = 0;
+	vetAux.sizeN1 = 0, vetAux.sizeN2 = 0;
+	vetAux.sizeNS1 = 0, vetAux.sizeNS2 = 0;
 }
 
 __device__
-bool dfs(const State &s, const int threadId)
+bool FinalCheck(const State &s)
 {
+	for (int i = 0;i < pat[threadIdx.x].en;i++)
+	{
+		Edge e1 = pat[threadIdx.x].edge[i];
+		bool flag = 0;
+
+		for (int j = g[threadIdx.x].head[s.core1[e1.u]];~j;j = g[threadIdx.x].edge[j].next)
+		{
+			Edge e2 = g[threadIdx.x].edge[j];
+
+			if (e1.label == e2.label&&s.core1[e1.v] == e2.v)
+			{
+				flag = 1;
+				break;
+			}
+		}
+		if (!flag) return 0;
+	}
+	return 1;
+}
+__device__
+void CalDFSVec(const State &s, VetAuxiliares &vetAux)
+{
+	ClearArrays(vetAux);
+
+	for (int i = 0; i < s.TAM;i++) {
+		vetAux.m1[vetAux.sizeM1++] = s.first[i];
+		vetAux.m2[vetAux.sizeM2++] = s.second[i];
+	}
+
+	if (vetAux.sizeM1 > 0 && vetAux.sizeM2 > 0) {
+		quicksort(vetAux.m1, 0, vetAux.sizeM1 - 1);
+		quicksort(vetAux.m2, 0, vetAux.sizeM2 - 1);
+	}
+
+	bool out1, in1;
+	for (int i = 0; i < pat[threadIdx.x].vn; i++) {
+		out1 = s.out1[i];
+		in1 = s.in1[i];
+
+		if (s.out1[i])
+			vetAux.tout1[vetAux.sizeTout1++] = i;
+		if (s.in1[i]) {
+			vetAux.tin1[vetAux.sizeTin1++] = i;
+		}
+		vetAux.n1[vetAux.sizeN1++] = i;
+	}
+
+	for (int i = 0; i < g[threadIdx.x].vn; i++) {
+		if (s.out2[i])
+			vetAux.tout2[vetAux.sizeTout2++] = i;
+		if (s.in2[i])
+			vetAux.tin2[vetAux.sizeTin2++] = i;
+		vetAux.n2[vetAux.sizeN2++] = i;
+	}
+
+	vetAux.sizeT1 = Union(vetAux.tin1, vetAux.tout1, vetAux.t1, vetAux.sizeTin1, vetAux.sizeTout1);
+
+	vetAux.sizeT2 = Union(vetAux.tin1, vetAux.tout2, vetAux.t2, vetAux.sizeTin1, vetAux.sizeTout2);
+
+	int tmp[maxv], sizeTmp;
+
+	sizeTmp = Difference(vetAux.n1, vetAux.m1, tmp, vetAux.sizeN1, vetAux.sizeM1);
+
+	vetAux.sizeNS1 = Difference(tmp, vetAux.t1, vetAux.ns1, sizeTmp, vetAux.sizeT1);
+
+	sizeTmp = Difference(vetAux.n2, vetAux.m2, tmp, vetAux.sizeN2, vetAux.sizeM2);
+
+	vetAux.sizeNS2 = Difference(tmp, vetAux.t2, vetAux.ns2, sizeTmp, vetAux.sizeT2);
+}
+
+__device__
+bool check(const State &s, int a, int b, VetAuxiliares &vetAux)
+{
+	// Check vertex label
+	if (pat[threadIdx.x].vtx[a].label != g[threadIdx.x].vtx[b].label) return 0;
+
+	// Check edge label
+	CalCheckVec(a, b, vetAux);
+
+	// Feasibility
+	if (CheckPrev(s, a, b, vetAux) && CheckSucc(s, a, b, vetAux) && CheckIn(vetAux) && CheckOut(vetAux) && CheckNew(vetAux)) return 1;
+	return 0;
+}
+
+__device__
+int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux)
+{
+	//printf("GenPairs \n");
+	int sizeAllPairs = 0;
+
+	CalDFSVec(s, vetAux);
+
+	if (vetAux.sizeTout1 > 0 && vetAux.sizeTout2 > 0) {
+		allPairsFirst = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
+		allPairsSecond = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
+	}
+
+	for (int i = 0; i < (int)vetAux.sizeTout1; i++)
+		for (int j = 0; j < (int)vetAux.sizeTout2; j++) {
+			allPairsFirst[sizeAllPairs] = vetAux.tout1[i], allPairsSecond[sizeAllPairs++] = vetAux.tout2[j];
+		}
+
+	//printf("1 -> sizeAllPairs %d \n", sizeAllPairs);
+	if (sizeAllPairs > 0)
+	{
+		return sizeAllPairs;
+	}
+
+	if (vetAux.sizeTin1 > 0 && vetAux.sizeTin2 > 0) {
+		allPairsFirst = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
+		allPairsSecond = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
+	}
+
+	for (int i = 0; i < (int)vetAux.sizeTin1; i++)
+		for (int j = 0; j < (int)vetAux.sizeTin2; j++) {
+			allPairsFirst[sizeAllPairs] = vetAux.tin1[i], allPairsSecond[sizeAllPairs++] = vetAux.tin2[j];
+		}
+
+	//printf("2 -> sizeAllPairs %d \n", sizeAllPairs);
+	if (sizeAllPairs > 0)
+	{
+		return sizeAllPairs;
+	}
+
+	int temp1[maxv], temp2[maxv];
+	int sizeTemp1 = 0, sizeTemp2 = 0;
+
+	for (int i = 0; i < pat[threadIdx.x].vn; i++)
+		if (s.core1[i] == -1)
+			temp1[sizeTemp1++] = i;
+	
+	for (int i = 0; i < g[threadIdx.x].vn; i++)
+		if (s.core2[i] == -1)
+			temp2[sizeTemp2++] = i;
+
+	allPairsFirst = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
+	allPairsSecond = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
+
+	for (int i = 0; i < sizeTemp1; i++)
+		for (int j = 0; j < sizeTemp2; j++) {
+			allPairsFirst[sizeAllPairs] = temp1[i], allPairsSecond[sizeAllPairs++] = temp2[j];
+		}
+
+	return sizeAllPairs;
+	//printf("fim GenPairs %d \n", sizeAllPairs);
+}
+__device__
+int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux)
+{
+	//printf("CheckPairs \n");
+	int sizeCandiPairs = 0;
+
+	candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
+	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));
+
+	int first, second;
+	for (int i = 0; i < sizeAllPairs; i++) {
+		first  = allPairsFirst[i];
+		second = allPairsSecond[i];
+
+		if (check(s, allPairsFirst[i], allPairsSecond[i], vetAux)) {
+			candiPairsFirst[sizeCandiPairs] = allPairsFirst[i];
+			candiPairsSecond[sizeCandiPairs++] = allPairsSecond[i];
+		}
+	}
+
+	return sizeCandiPairs;
+}
+__device__
+void UpdateState(State &s, int a, int b)
+{
+	// Update core,in,out
+	for (int i = 0; i < pat[threadIdx.x].vn; i++)
+	{
+		s.core1[a] = b;
+		s.in1[a] = 0;
+		s.out1[a] = 0;
+	}
+	for (int i = 0; i < g[threadIdx.x].vn; i++)
+	{
+		s.core2[b] = a;
+		s.in2[b] = 0;
+		s.out2[b] = 0;
+	}
+
+	int headi = pat[threadIdx.x].head[a];
+	int pat2 = pat[threadIdx.x].edge[2].next;
+	int pat1 = pat[threadIdx.x].edge[1].next;
+
+	for (int i = headi; ~i; i = pat[threadIdx.x].edge[i].next)
+	{
+		int v = pat[threadIdx.x].edge[i].v;
+		if (s.core1[v] == -1)
+			s.out1[v] = 1;
+	}
+	// Add new in1
+	for (int i = revpat[threadIdx.x].head[a]; ~i; i = revpat[threadIdx.x].edge[i].next)
+	{
+		int v = revpat[threadIdx.x].edge[i].v;
+		if (s.core1[v] == -1)
+			s.in1[v] = 1;
+	}
+	// Add new out2
+	for (int i = g[threadIdx.x].head[b]; ~i; i = g[threadIdx.x].edge[i].next)
+	{
+		int v = g[threadIdx.x].edge[i].v;
+		if (s.core2[v] == -1)
+			s.out2[v] = 1;
+	}
+	// Add new in2
+	for (int i = revg[threadIdx.x].head[b]; ~i; i = revg[threadIdx.x].edge[i].next)
+	{
+		int v = revg[threadIdx.x].edge[i].v;
+		if (s.core2[v] == -1)
+			s.in2[v] = 1;
+	}
+
+	// Add to s	
+	s.first[s.TAM] = a;
+	s.second[s.TAM] = b;
+	s.TAM++;
+}
+__device__
+bool CheckPrev(const State &s, int a, int b, VetAuxiliares &vetAux)
+{
+	int tmp[maxv], sizeTmp;
+	bool flag;
+
+	sizeTmp = Intersection(vetAux.m1, vetAux.pred1, tmp, vetAux.sizeM1, vetAux.sizePred1);
+
+	for (int i = 0; i < sizeTmp;i++)
+	{
+		flag = 0;
+		for (int j = 0;j < vetAux.sizePred2 && !flag;j++)
+			if (s.core1[tmp[i]] == vetAux.pred2[j])
+			{
+				flag = 1;
+			}
+		if (!flag) return 0;
+	}
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+
+	sizeTmp = Intersection(vetAux.m2, vetAux.pred2, tmp, vetAux.sizeM1, vetAux.sizePred2);
+
+	for (int i = 0;i < sizeTmp;i++)
+	{
+		flag = 0;
+		for (int j = 0;j < vetAux.sizePred1 && !flag;j++)
+			if (s.core2[tmp[i]] == vetAux.pred1[j])
+			{
+				flag = 1;
+			}
+		if (!flag) return 0;
+	}
+
+	return 1;
+}
+__device__
+bool CheckSucc(const State &s, int a, int b, VetAuxiliares &vetAux)
+{
+	int tmp[maxv], sizeTmp;
+	bool flag;
+
+	sizeTmp = Intersection(vetAux.m1, vetAux.succ1, tmp, vetAux.sizeM1, vetAux.sizeSucc1);
+
+	for (int i = 0;i < sizeTmp;i++)
+	{
+		flag = 0;
+		for (int j = 0; j < vetAux.sizeSucc2 && !flag;j++)
+			if (s.core1[tmp[i]] == vetAux.succ2[j])
+			{
+				flag = 1;
+			}
+		if (!flag) return 0;
+	}
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+
+	sizeTmp = Intersection(vetAux.m2, vetAux.succ2, tmp, vetAux.sizeM2, vetAux.sizeSucc2);
+
+	for (int i = 0;i < sizeTmp;i++)
+	{
+		flag = 0;
+		for (int j = 0;j < vetAux.sizeSucc1 && !flag;j++)
+			if (s.core2[tmp[i]] == vetAux.succ1[j])
+			{
+				flag = 1;
+			}
+		if (!flag) return 0;
+	}
+
+	return 1;
+}
+__device__
+bool CheckIn(VetAuxiliares &vetAux)
+{
+	int tmp[maxv], sizeTmp;
+	int a, b, c, d;
+
+	sizeTmp = Intersection(vetAux.succ1, vetAux.tin1, tmp, vetAux.sizeSucc1, vetAux.sizeTin1);
+
+	a = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+
+	sizeTmp = Intersection(vetAux.succ2, vetAux.tin2, tmp, vetAux.sizeSucc2, vetAux.sizeTin2);
+
+	b = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+
+	sizeTmp = Intersection(vetAux.pred1, vetAux.tin1, tmp, vetAux.sizePred1, vetAux.sizeTin1);
+
+	c = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.pred2, vetAux.tin2, tmp, vetAux.sizePred2, vetAux.sizeTin2);
+
+	d = sizeTmp;
+
+	return (a <= b) && (c <= d);
+}
+__device__
+bool CheckOut(VetAuxiliares &vetAux)
+{
+	int tmp[maxv], sizeTmp;
+	int a, b, c, d;
+
+	sizeTmp = Intersection(vetAux.succ1, vetAux.tout1, tmp, vetAux.sizeSucc1, vetAux.sizeTout1);
+
+	a = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.succ2, vetAux.tout2, tmp, vetAux.sizeSucc2, vetAux.sizeTout2);
+	b = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.pred1, vetAux.tout1, tmp, vetAux.sizePred1, vetAux.sizeTout1);
+	c = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.pred2, vetAux.tout2, tmp, vetAux.sizePred2, vetAux.sizeTout2);
+	d = sizeTmp;
+
+	return (a <= b) && (c <= d);
+}
+__device__
+bool CheckNew(VetAuxiliares &vetAux)
+{
+	int tmp[maxv], sizeTmp;
+	int a, b, c, d;
+
+	sizeTmp = Intersection(vetAux.ns1, vetAux.pred1, tmp, vetAux.sizeNS1, vetAux.sizePred1);
+	a = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.ns2, vetAux.pred2, tmp, vetAux.sizeNS2, vetAux.sizePred2);
+	b = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.ns1, vetAux.succ1, tmp, vetAux.sizeNS1, vetAux.sizeSucc1);
+	c = sizeTmp;
+
+	//clear tmp
+	for (int i = 0;i < maxv;i++) tmp[i] = 0;
+	sizeTmp = Intersection(vetAux.ns2, vetAux.succ2, tmp, vetAux.sizeNS2, vetAux.sizeSucc2);
+	d = sizeTmp;
+
+	return (a <= b) && (c <= d);
+}
+
+__device__
+void CalCheckVec(int a, int b, VetAuxiliares &vetAux)
+{
+	// Init
+	vetAux.sizePred1 = 0, vetAux.sizePred2 = 0, vetAux.sizeSucc1 = 0, vetAux.sizeSucc2 = 0;
+
+	// aPred
+	for (int i = revpat[threadIdx.x].head[a]; ~i; i = revpat[threadIdx.x].edge[i].next)
+		vetAux.pred1[vetAux.sizePred1++] = revpat[threadIdx.x].edge[i].v;
+
+	// bPred
+	for (int i = revg[threadIdx.x].head[b]; ~i; i = revg[threadIdx.x].edge[i].next)
+		vetAux.pred2[vetAux.sizePred2++] = revg[threadIdx.x].edge[i].v;
+
+	// aSucc
+	for (int i = pat[threadIdx.x].head[a]; ~i; i = pat[threadIdx.x].edge[i].next)
+		vetAux.succ1[vetAux.sizeSucc1++] = pat[threadIdx.x].edge[i].v;
+
+	// bSucc
+	for (int i = g[threadIdx.x].head[b]; ~i; i = g[threadIdx.x].edge[i].next)
+		vetAux.succ2[vetAux.sizeSucc2++] = g[threadIdx.x].edge[i].v;
+
+	// Sort
+	if (vetAux.sizePred1 > 0) quicksort(vetAux.pred1, 0, vetAux.sizePred1 - 1);
+	if (vetAux.sizePred2 > 0) quicksort(vetAux.pred2, 0, vetAux.sizePred2 - 1);
+	if (vetAux.sizeSucc1 > 0) quicksort(vetAux.succ1, 0, vetAux.sizeSucc1 - 1);
+	if (vetAux.sizeSucc2 > 0) quicksort(vetAux.succ2, 0, vetAux.sizeSucc2 - 1);
+}
+
+__device__
+bool dfs(const State &s, VetAuxiliares &vetAux)
+{
+	//printf("DFS s[threadIdx.x].core1[0] %d \n", s.core1[0]);
+
 	int *allPairsFirst, *allPairsSecond;
 	int *candiPairsFirst, *candiPairsSecond;
-
-	printf("threadId %d contador %d ref s => %d\n", threadId, contador, &s);
-
+	
+	//printf("threadId %d contador %d ref s => %d\n", threadId, contador, &s[threadId]);
 	contador++;
 
 	// Matched
-	//printf("s.TAM %d pat.vn %d \n", s.TAM, pat[threadId].vn);
-	if ((int)s.TAM == pat[threadId].vn)
+	//printf("s.TAM %d pat.vn %d \n", s[threadId].TAM, pat[threadId].vn);
+	if ((int)s.TAM == pat[threadIdx.x].vn)
 	{		
-		if (FinalCheck(s, threadId))
+		if (FinalCheck(s))
 		{
 			return 1;
 		}		
 	}
 
 	// Generate Pair(n,m)
-	GenPairs(s, allPairsFirst, allPairsSecond, threadId);
+	int sizeAllPairs = GenPairs(s, allPairsFirst, allPairsSecond, vetAux);
 	// Check allPairs, get candiPairs
-	CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, threadId);
+	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux);
 
 	// For tmp dfs store
 	int *vecFirst, *vecSecond;
@@ -838,53 +815,63 @@ bool dfs(const State &s, const int threadId)
 	memcpy(vecFirst, candiPairsFirst, sizeCandiPairs * sizeof(int));
 	memcpy(vecSecond, candiPairsSecond, sizeCandiPairs * sizeof(int));
 
+	//printf("threadId %d contador %d ref s => %d %d\n", threadId, contador, &vecFirst, &vecSecond);
+
 	bool ret = false;
-	//printf("threadId %d sizeVec %d \n", threadId, sizeVec);
+	//if (threadIdx.x == 0) printf("threadID %d sizeVec %d \n",threadIdx.x, sizeVec);
+
 	// Next recursive	
+	//printf("sizeVec %d s[threadIdx.x].core1[0] %d \n", sizeVec s[threadIdx.x].core1[0]);
+
+	/*if (threadIdx.x == 0)
+		printf("sizeVec  %d \n", sizeVec);*/
+
 	for (int i = 0;i < sizeVec;i++)
 	{
 		State ns = s;
+
 		int a = vecFirst[i], b = vecSecond[i];
 		
-		UpdateState(ns, a, b, threadId);
+		UpdateState(ns, a, b);
 
-		memcpy(m1t, m1, maxv * sizeof(int));
-		memcpy(m2t, m2, maxv * sizeof(int));
+		memcpy(m1t, vetAux.m1, maxv * sizeof(int));
+		memcpy(m2t, vetAux.m2, maxv * sizeof(int));
 
-		memcpy(tin1t, tin1, maxv * sizeof(int));
-		memcpy(tin2t, tin2, maxv * sizeof(int));
+		memcpy(tin1t, vetAux.tin1, maxv * sizeof(int));
+		memcpy(tin2t, vetAux.tin2, maxv * sizeof(int));
 
-		memcpy(tout1t, tout1, maxv * sizeof(int));
-		memcpy(tout2t, tout2, maxv * sizeof(int));
+		memcpy(tout1t, vetAux.tout1, maxv * sizeof(int));
+		memcpy(tout2t, vetAux.tout2, maxv * sizeof(int));
 
-		memcpy(n1t, n1, maxv * sizeof(int));
-		memcpy(n2t, n2, maxv * sizeof(int));
+		memcpy(n1t, vetAux.n1, maxv * sizeof(int));
+		memcpy(n2t, vetAux.n2, maxv * sizeof(int));
 
-		memcpy(ns1t, ns1, maxv * sizeof(int));
-		memcpy(ns2t, ns2, maxv * sizeof(int));
+		memcpy(ns1t, vetAux.ns1, maxv * sizeof(int));
+		memcpy(ns2t, vetAux.ns2, maxv * sizeof(int));
 
-		memcpy(t1t, t1, maxv * sizeof(int));
-		memcpy(t2t, t2, maxv * sizeof(int));
+		memcpy(t1t, vetAux.t1, maxv * sizeof(int));
+		memcpy(t2t, vetAux.t2, maxv * sizeof(int));
+		
+		ret = dfs(ns, vetAux);	
+		
 
-		ret = dfs(ns, threadId);
+		memcpy(vetAux.m1, m1t, maxv * sizeof(int));
+		memcpy(vetAux.m2, m2t, maxv * sizeof(int));
 
-		memcpy(m1, m1t, maxv * sizeof(int));
-		memcpy(m2, m2t, maxv * sizeof(int));
+		memcpy(vetAux.tin1, tin1t, maxv * sizeof(int));
+		memcpy(vetAux.tin2, tin2t, maxv * sizeof(int));
 
-		memcpy(tin1, tin1t, maxv * sizeof(int));
-		memcpy(tin2, tin2t, maxv * sizeof(int));
+		memcpy(vetAux.tout1, tout1t, maxv * sizeof(int));
+		memcpy(vetAux.tout2, tout2t, maxv * sizeof(int));
 
-		memcpy(tout1, tout1t, maxv * sizeof(int));
-		memcpy(tout2, tout2t, maxv * sizeof(int));
+		memcpy(vetAux.n1, n1t, maxv * sizeof(int));
+		memcpy(vetAux.n2, n2t, maxv * sizeof(int));
 
-		memcpy(n1, n1t, maxv * sizeof(int));
-		memcpy(n2, n2t, maxv * sizeof(int));
+		memcpy(vetAux.ns1, ns1t, maxv * sizeof(int));
+		memcpy(vetAux.ns2, ns2t, maxv * sizeof(int));
 
-		memcpy(ns1, ns1t, maxv * sizeof(int));
-		memcpy(ns2, ns2t, maxv * sizeof(int));
-
-		memcpy(t1, t1t, maxv * sizeof(int));
-		memcpy(t2, t2t, maxv * sizeof(int));
+		memcpy(vetAux.t1, t1t, maxv * sizeof(int));
+		memcpy(vetAux.t2, t2t, maxv * sizeof(int));
 
 		if (ret) break;
 	}
@@ -902,19 +889,39 @@ bool dfs(const State &s, const int threadId)
 }
 
 __device__
-bool query(const int threadId, const State &s)
+bool query(const State &s, VetAuxiliares &vetAux)
 {
 	//printf("Referencia s => %d \n", &s);
 
-	return dfs(s, threadId);
+	//printf("QUERY s[threadIdx.x].core1[0] %d \n", s.core1[0]);
+	return dfs(s, vetAux);
 }
+__device__
+Graph copyGraph(Graph &graphSource) {
+	Graph graphDest;
+	graphDest.aloca();
+
+	graphSource.en = graphDest.en;
+	graphSource.vn = graphDest.vn;
+
+	for (int j = 0; j < graphSource.en;j++) {
+		graphDest.edge[j] = graphSource.edge[j];
+		graphDest.head[j] = graphSource.head[j];
+	}
+
+	for (int j = 0; j < graphSource.vn;j++) {
+		graphDest.vtx[j] = graphSource.vtx[j];
+	}
+
+	return graphDest;
+}
+
 
 __global__
 void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP)
 {
 	int matches = 0;
-	State s[NTHREADS];
-
+	
 	if (threadIdx.x == 0)
 		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", sizeDB, sizeQuery, sizeQueryP);
 
@@ -927,28 +934,62 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 	{
 		for (int j = threadIdx.x;j < sizeQuery;j += NTHREADS) {
 			matches = 0;
+			State s;
+			s.init();	
 
-			s[threadIdx.x].init();
+			VetAuxiliares vetAux;
 			
+			//printf("SOLVE s[threadIdx.x].core1[0] %d \n", s.core1[0]);
 
-			pat[threadIdx.x] = QueryGraph[j];
+			pat[threadIdx.x].aloca();
+			pat[threadIdx.x].en = QueryGraph[j].en;
+			pat[threadIdx.x].vn = QueryGraph[j].vn;
+
+			for (int k = 0; k < QueryGraph[j].en;k++) {
+				pat[threadIdx.x].edge[k] = QueryGraph[j].edge[k];
+				pat[threadIdx.x].head[k] = QueryGraph[j].head[k];
+			}
+
+			for (int k = 0; k < QueryGraph[j].vn;k++) {
+				pat[threadIdx.x].vtx[k] = QueryGraph[j].vtx[k];
+			}
 
 			GenRevGraph(pat[threadIdx.x], revpat[threadIdx.x]);
 
 			for (int x = 0; x < sizeDB; x++)
-			{
-				g[threadIdx.x] = DBGraph[x];
+			{				
+				g[threadIdx.x].aloca();
+				g[threadIdx.x].en = DBGraph[x].en;
+				g[threadIdx.x].vn = DBGraph[x].vn;
 
-				//printf("pat.vn %d  g.vn %d pat.en %d g.en %d \n", pat.vn, g.vn, pat.en, g.en);
+				for (int k = 0; k < DBGraph[x].en;k++) {
+					g[threadIdx.x].edge[k] = DBGraph[x].edge[k];
+					g[threadIdx.x].head[k] = DBGraph[x].head[k];
+				}
+
+				for (int k = 0; k < DBGraph[x].vn;k++) {
+					g[threadIdx.x].vtx[k] = DBGraph[x].vtx[k];
+				}
+
+				//printf("pat.vn %d  g.vn %d pat.en %d g.en %d \n", pat[threadIdx.x].vn, g[threadIdx.x].vn, pat[threadIdx.x].en, g[threadIdx.x].en);
 				if (pat[threadIdx.x].vn > g[threadIdx.x].vn || pat[threadIdx.x].en > g[threadIdx.x].en) continue;
 
 				GenRevGraph(g[threadIdx.x], revg[threadIdx.x]);
 
-				if (query(threadIdx.x, s[threadIdx.x])) // Matched
+				
+				if (query(s, vetAux)) // Matched
 				{
 					matches++;
 				}
+
+				free(g[threadIdx.x].head);
+				free(g[threadIdx.x].vtx);
+				free(g[threadIdx.x].edge);
 			}
+
+			free(pat[threadIdx.x].head);
+			free(pat[threadIdx.x].vtx);
+			free(pat[threadIdx.x].edge);
 			
 			printf("%s %d Matches found %d \n", QueryPath, j , matches);
 		}		
@@ -961,19 +1002,19 @@ void cudaShowLimit() {
 	if (cudaDeviceGetLimit(&limit, cudaLimitStackSize) != cudaSuccess) {
 		printf("ERROR: Não foi possível retornar o limite do stack\n");
 	}
-	printf("cudaLimitStackSize: %u\n", (unsigned)limit);
+	//printf("cudaLimitStackSize: %u\n", (unsigned)limit);
 
 	if (cudaDeviceGetLimit(&limit, cudaLimitPrintfFifoSize) != cudaSuccess) {
 		printf("ERROR: Não foi possível retornar o limite do FIFO\n");
 	}
-	printf("cudaLimitPrintfFifoSize: %u\n", (unsigned)limit);
+	//printf("cudaLimitPrintfFifoSize: %u\n", (unsigned)limit);
 
 	if (cudaDeviceGetLimit(&limit, cudaLimitMallocHeapSize) != cudaSuccess) {
 		printf("ERROR: Não foi possível retornar o limite do HEAP\n");
 	}	
-	printf("cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
+	//printf("cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
 
-	limit = 1024 * 32;
+	limit = 1024 * 64;
 
 	cudaDeviceSetLimit(cudaLimitStackSize, limit);	
 	//cudaDeviceSetLimit(cudaLimitPrintfFifoSize, limit);
@@ -984,11 +1025,11 @@ void cudaShowLimit() {
 	limit = 0;
 
 	cudaDeviceGetLimit(&limit, cudaLimitStackSize);
-	printf("New cudaLimitStackSize: %u\n", (unsigned)limit);
+	//printf("New cudaLimitStackSize: %u\n", (unsigned)limit);
 	cudaDeviceGetLimit(&limit, cudaLimitPrintfFifoSize);
-	printf("New cudaLimitPrintfFifoSize: %u\n", (unsigned)limit);
+	//printf("New cudaLimitPrintfFifoSize: %u\n", (unsigned)limit);
 	cudaDeviceGetLimit(&limit, cudaLimitMallocHeapSize);
-	printf("New cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
+	//printf("New cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
 }
 
 void beforeSolve() {
@@ -1015,9 +1056,6 @@ void beforeSolve() {
 
 	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize);
 	
-	//is used in host code (i.e. running on the CPU) when it is desired that CPU activity wait on the completion of any pending GPU activity
-	//cudaThreadSynchronize();
-
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&time, start, stop);
