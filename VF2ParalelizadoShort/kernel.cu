@@ -1,8 +1,8 @@
 const static int maxv = 20;
-const static int maxe = 20;
-const int MAX_GRAPHS_DB = 55;
-const int MAX_GRAPHS_QUERY = 2;
-const int NBLOCKS = 1, NTHREADS = 2;
+const static int maxe = 22;
+const int MAX_GRAPHS_DB = 107;
+const int MAX_GRAPHS_QUERY = 10;
+const int NBLOCKS = 1, NTHREADS = 10;
 
 #include "head.h"
 #include "class.h"
@@ -17,10 +17,7 @@ int DBGraphSize, QueryGraphSize, QueryPathSize;
 Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_QUERY], *vec;
 
 __device__
-Graph pat[NTHREADS], g[NTHREADS], revpat[NTHREADS], revg[NTHREADS];
-__device__
 int contador = 0;
-
 
 void init()
 {
@@ -52,7 +49,7 @@ void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 	vec[graphSize].aloca();
 
 	string buff;
-	int n;
+	int n = -1;
 	int m, l;
 	int p, q;
 	while (getline(fin, buff))
@@ -67,7 +64,7 @@ void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 		}
 		if (buff[0] == 't')
 		{
-			sscanf_s(buff.c_str(), "t # %d", &n);
+			n++;
 			if (n == 0) continue;
 
 			graphSize++;
@@ -217,159 +214,18 @@ Graph* alocaGraph(Graph *Grafo, int GraphSize) {
 	return GraphCUDA;
 }
 
-__device__
-void quicksort(int ls[], int l, int r) {
-	int i, j, k, p, q;
-	int v;
-	if (r <= l)
-		return;
-	v = ls[r];
-	i = l - 1;
-	j = r;
-	p = l - 1;
-	q = r;
-	for (;;) {
-		while (ls[++i] < v);
-		while (v < ls[--j])
-			if (j == l)
-				break;
-		if (i >= j)
-			break;
-		swap(ls[i], ls[j]);
-		if (ls[i] == v) {
-			p++;
-			swap(ls[p], ls[i]);
-		}
-		if (v == ls[j]) {
-			q--;
-			swap(ls[q], ls[j]);
-		}
-	}
-	swap(ls[i], ls[r]);
-	j = i - 1;
-	i++;
-	for (k = l; k < p; k++, j--)
-		swap(ls[k], ls[j]);
-	for (k = r - 1; k > q; k--, i++)
-		swap(ls[k], ls[i]);
 
-	quicksort(ls, l, j);
-	quicksort(ls, i, r);
-}
 __device__
-int Union(int arr1[], int arr2[], int arr3[], int m, int n)
+bool FinalCheck(const State &s, Graph &pat, Graph &g)
 {
-	int i = 0, j = 0, x = 0;
-
-	while (i < m && j < n) {
-		if (arr1[i] < arr2[j]) {
-			arr3[x++] = arr1[i++];
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				arr3[x++] = arr2[j++];
-			}
-			else {
-				arr3[x++] = arr2[j++];
-				i++;
-			}
-	}
-
-	/* Print remaining elements of the larger array */
-	while (i < m)
-		arr3[x++] = arr1[i++];
-	while (j < n)
-		arr3[x++] = arr2[j++];
-
-	return x;
-}
-__device__
-int Difference(int arr1[], int arr2[], int arr3[], int n1, int n2)
-{
-	int i = 0, j = 0, k = 0, x = 0;
-	while (i < n1 && j < n2) {
-
-		// If not common, print smaller 
-		if (arr1[i] < arr2[j]) {
-			arr3[x++] = arr1[i++];
-			k++;
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				j++;
-				k++;
-			}
-		// Skip common element 
-			else {
-				i++;
-				j++;
-			}
-	}
-
-	// printing remaining elements 
-	while (i < n1) {
-
-		arr3[x++] = arr1[i++];
-		k++;
-	}
-	while (j < n2) {
-		arr2[x++] = arr1[j++];
-		k++;
-	}
-
-	return x;
-}
-__device__
-int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
-{
-	int i = 0, j = 0, k = 0, x = 0;
-	while (i < n1 && j < n2) {
-
-		// If not common, jump
-		if (arr1[i] < arr2[j]) {
-			i++, k++;
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				j++, k++;
-			}
-			else {
-				arr3[x++] = arr1[i++];
-				j++;
-			}
-	}
-
-	return x;
-}
-__device__
-void ClearArrays(VetAuxiliares &vetAux) {
-	for (int i = 0; i < maxv;i++) {
-		vetAux.m1[i] = 0, vetAux.m2[i] = 0;
-		vetAux.tin1[i] = 0, vetAux.tin2[i] = 0;
-		vetAux.tout1[i] = 0, vetAux.tout2[i] = 0;
-		vetAux.n1[i] = 0, vetAux.n2[i] = 0;
-		vetAux.ns1[i] = 0, vetAux.ns2[i] = 0;
-		vetAux.t1[i] = 0, vetAux.t2[i] = 0;
-	}
-
-	vetAux.sizeM1 = 0, vetAux.sizeM2 = 0;
-	vetAux.sizeTin1 = 0, vetAux.sizeTin2 = 0;
-	vetAux.sizeTout1 = 0, vetAux.sizeTout2 = 0;
-	vetAux.sizeN1 = 0, vetAux.sizeN2 = 0;
-	vetAux.sizeNS1 = 0, vetAux.sizeNS2 = 0;
-}
-
-__device__
-bool FinalCheck(const State &s)
-{
-	for (int i = 0;i < pat[threadIdx.x].en;i++)
+	for (int i = 0;i < pat.en;i++)
 	{
-		Edge e1 = pat[threadIdx.x].edge[i];
+		Edge e1 = pat.edge[i];
 		bool flag = 0;
 
-		for (int j = g[threadIdx.x].head[s.core1[e1.u]];~j;j = g[threadIdx.x].edge[j].next)
+		for (int j = g.head[s.core1[e1.u]];~j;j = g.edge[j].next)
 		{
-			Edge e2 = g[threadIdx.x].edge[j];
+			Edge e2 = g.edge[j];
 
 			if (e1.label == e2.label&&s.core1[e1.v] == e2.v)
 			{
@@ -382,7 +238,7 @@ bool FinalCheck(const State &s)
 	return 1;
 }
 __device__
-void CalDFSVec(const State &s, VetAuxiliares &vetAux)
+void CalDFSVec(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g)
 {
 	ClearArrays(vetAux);
 
@@ -396,11 +252,7 @@ void CalDFSVec(const State &s, VetAuxiliares &vetAux)
 		quicksort(vetAux.m2, 0, vetAux.sizeM2 - 1);
 	}
 
-	bool out1, in1;
-	for (int i = 0; i < pat[threadIdx.x].vn; i++) {
-		out1 = s.out1[i];
-		in1 = s.in1[i];
-
+	for (int i = 0; i < pat.vn; i++) {
 		if (s.out1[i])
 			vetAux.tout1[vetAux.sizeTout1++] = i;
 		if (s.in1[i]) {
@@ -409,7 +261,7 @@ void CalDFSVec(const State &s, VetAuxiliares &vetAux)
 		vetAux.n1[vetAux.sizeN1++] = i;
 	}
 
-	for (int i = 0; i < g[threadIdx.x].vn; i++) {
+	for (int i = 0; i < g.vn; i++) {
 		if (s.out2[i])
 			vetAux.tout2[vetAux.sizeTout2++] = i;
 		if (s.in2[i])
@@ -433,26 +285,26 @@ void CalDFSVec(const State &s, VetAuxiliares &vetAux)
 }
 
 __device__
-bool check(const State &s, int a, int b, VetAuxiliares &vetAux)
+bool check(const State &s, int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
 	// Check vertex label
-	if (pat[threadIdx.x].vtx[a].label != g[threadIdx.x].vtx[b].label) return 0;
+	if (pat.vtx[a].label != g.vtx[b].label) return 0;
 
 	// Check edge label
-	CalCheckVec(a, b, vetAux);
+	CalCheckVec(a, b, vetAux, pat, g, revpat, revg);
 
 	// Feasibility
 	if (CheckPrev(s, a, b, vetAux) && CheckSucc(s, a, b, vetAux) && CheckIn(vetAux) && CheckOut(vetAux) && CheckNew(vetAux)) return 1;
+
 	return 0;
 }
 
 __device__
-int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux)
+int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux, Graph &pat, Graph &g)
 {
-	//printf("GenPairs \n");
 	int sizeAllPairs = 0;
 
-	CalDFSVec(s, vetAux);
+	CalDFSVec(s, vetAux, pat, g);
 
 	if (vetAux.sizeTout1 > 0 && vetAux.sizeTout2 > 0) {
 		allPairsFirst = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
@@ -464,7 +316,6 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 			allPairsFirst[sizeAllPairs] = vetAux.tout1[i], allPairsSecond[sizeAllPairs++] = vetAux.tout2[j];
 		}
 
-	//printf("1 -> sizeAllPairs %d \n", sizeAllPairs);
 	if (sizeAllPairs > 0)
 	{
 		return sizeAllPairs;
@@ -480,7 +331,6 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 			allPairsFirst[sizeAllPairs] = vetAux.tin1[i], allPairsSecond[sizeAllPairs++] = vetAux.tin2[j];
 		}
 
-	//printf("2 -> sizeAllPairs %d \n", sizeAllPairs);
 	if (sizeAllPairs > 0)
 	{
 		return sizeAllPairs;
@@ -489,11 +339,11 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 	int temp1[maxv], temp2[maxv];
 	int sizeTemp1 = 0, sizeTemp2 = 0;
 
-	for (int i = 0; i < pat[threadIdx.x].vn; i++)
+	for (int i = 0; i < pat.vn; i++)
 		if (s.core1[i] == -1)
 			temp1[sizeTemp1++] = i;
 	
-	for (int i = 0; i < g[threadIdx.x].vn; i++)
+	for (int i = 0; i < g.vn; i++)
 		if (s.core2[i] == -1)
 			temp2[sizeTemp2++] = i;
 
@@ -505,24 +355,18 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 			allPairsFirst[sizeAllPairs] = temp1[i], allPairsSecond[sizeAllPairs++] = temp2[j];
 		}
 
-	return sizeAllPairs;
-	//printf("fim GenPairs %d \n", sizeAllPairs);
+	return sizeAllPairs;	
 }
 __device__
-int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux)
+int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	//printf("CheckPairs \n");
 	int sizeCandiPairs = 0;
 
 	candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
 	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));
 
-	int first, second;
 	for (int i = 0; i < sizeAllPairs; i++) {
-		first  = allPairsFirst[i];
-		second = allPairsSecond[i];
-
-		if (check(s, allPairsFirst[i], allPairsSecond[i], vetAux)) {
+		if (check(s, allPairsFirst[i], allPairsSecond[i], vetAux, pat, g, revpat, revg)) {
 			candiPairsFirst[sizeCandiPairs] = allPairsFirst[i];
 			candiPairsSecond[sizeCandiPairs++] = allPairsSecond[i];
 		}
@@ -531,50 +375,46 @@ int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&
 	return sizeCandiPairs;
 }
 __device__
-void UpdateState(State &s, int a, int b)
+void UpdateState(State &s, int a, int b, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
 	// Update core,in,out
-	for (int i = 0; i < pat[threadIdx.x].vn; i++)
+	for (int i = 0; i < pat.vn; i++)
 	{
 		s.core1[a] = b;
 		s.in1[a] = 0;
 		s.out1[a] = 0;
 	}
-	for (int i = 0; i < g[threadIdx.x].vn; i++)
+	for (int i = 0; i < g.vn; i++)
 	{
 		s.core2[b] = a;
 		s.in2[b] = 0;
 		s.out2[b] = 0;
 	}
 
-	int headi = pat[threadIdx.x].head[a];
-	int pat2 = pat[threadIdx.x].edge[2].next;
-	int pat1 = pat[threadIdx.x].edge[1].next;
-
-	for (int i = headi; ~i; i = pat[threadIdx.x].edge[i].next)
+	for (int i = pat.head[a]; ~i; i = pat.edge[i].next)
 	{
-		int v = pat[threadIdx.x].edge[i].v;
+		int v = pat.edge[i].v;
 		if (s.core1[v] == -1)
 			s.out1[v] = 1;
 	}
 	// Add new in1
-	for (int i = revpat[threadIdx.x].head[a]; ~i; i = revpat[threadIdx.x].edge[i].next)
+	for (int i = revpat.head[a]; ~i; i = revpat.edge[i].next)
 	{
-		int v = revpat[threadIdx.x].edge[i].v;
+		int v = revpat.edge[i].v;
 		if (s.core1[v] == -1)
 			s.in1[v] = 1;
 	}
 	// Add new out2
-	for (int i = g[threadIdx.x].head[b]; ~i; i = g[threadIdx.x].edge[i].next)
+	for (int i = g.head[b]; ~i; i = g.edge[i].next)
 	{
-		int v = g[threadIdx.x].edge[i].v;
+		int v = g.edge[i].v;
 		if (s.core2[v] == -1)
 			s.out2[v] = 1;
 	}
 	// Add new in2
-	for (int i = revg[threadIdx.x].head[b]; ~i; i = revg[threadIdx.x].edge[i].next)
+	for (int i = revg.head[b]; ~i; i = revg.edge[i].next)
 	{
-		int v = revg[threadIdx.x].edge[i].v;
+		int v = revg.edge[i].v;
 		if (s.core2[v] == -1)
 			s.in2[v] = 1;
 	}
@@ -584,6 +424,7 @@ void UpdateState(State &s, int a, int b)
 	s.second[s.TAM] = b;
 	s.TAM++;
 }
+
 __device__
 bool CheckPrev(const State &s, int a, int b, VetAuxiliares &vetAux)
 {
@@ -745,26 +586,26 @@ bool CheckNew(VetAuxiliares &vetAux)
 }
 
 __device__
-void CalCheckVec(int a, int b, VetAuxiliares &vetAux)
+void CalCheckVec(int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
 	// Init
 	vetAux.sizePred1 = 0, vetAux.sizePred2 = 0, vetAux.sizeSucc1 = 0, vetAux.sizeSucc2 = 0;
 
 	// aPred
-	for (int i = revpat[threadIdx.x].head[a]; ~i; i = revpat[threadIdx.x].edge[i].next)
-		vetAux.pred1[vetAux.sizePred1++] = revpat[threadIdx.x].edge[i].v;
+	for (int i = revpat.head[a]; ~i; i = revpat.edge[i].next)
+		vetAux.pred1[vetAux.sizePred1++] = revpat.edge[i].v;
 
 	// bPred
-	for (int i = revg[threadIdx.x].head[b]; ~i; i = revg[threadIdx.x].edge[i].next)
-		vetAux.pred2[vetAux.sizePred2++] = revg[threadIdx.x].edge[i].v;
+	for (int i = revg.head[b]; ~i; i = revg.edge[i].next)
+		vetAux.pred2[vetAux.sizePred2++] = revg.edge[i].v;
 
 	// aSucc
-	for (int i = pat[threadIdx.x].head[a]; ~i; i = pat[threadIdx.x].edge[i].next)
-		vetAux.succ1[vetAux.sizeSucc1++] = pat[threadIdx.x].edge[i].v;
+	for (int i = pat.head[a]; ~i; i = pat.edge[i].next)
+		vetAux.succ1[vetAux.sizeSucc1++] = pat.edge[i].v;
 
 	// bSucc
-	for (int i = g[threadIdx.x].head[b]; ~i; i = g[threadIdx.x].edge[i].next)
-		vetAux.succ2[vetAux.sizeSucc2++] = g[threadIdx.x].edge[i].v;
+	for (int i = g.head[b]; ~i; i = g.edge[i].next)
+		vetAux.succ2[vetAux.sizeSucc2++] = g.edge[i].v;
 
 	// Sort
 	if (vetAux.sizePred1 > 0) quicksort(vetAux.pred1, 0, vetAux.sizePred1 - 1);
@@ -774,30 +615,24 @@ void CalCheckVec(int a, int b, VetAuxiliares &vetAux)
 }
 
 __device__
-bool dfs(const State &s, VetAuxiliares &vetAux)
+bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	//printf("DFS s[threadIdx.x].core1[0] %d \n", s.core1[0]);
-
 	int *allPairsFirst, *allPairsSecond;
 	int *candiPairsFirst, *candiPairsSecond;
 	
-	//printf("threadId %d contador %d ref s => %d\n", threadId, contador, &s[threadId]);
-	contador++;
-
 	// Matched
-	//printf("s.TAM %d pat.vn %d \n", s[threadId].TAM, pat[threadId].vn);
-	if ((int)s.TAM == pat[threadIdx.x].vn)
+	if ((int)s.TAM == pat.vn)
 	{		
-		if (FinalCheck(s))
+		if (FinalCheck(s, pat, g))
 		{
 			return 1;
 		}		
 	}
 
 	// Generate Pair(n,m)
-	int sizeAllPairs = GenPairs(s, allPairsFirst, allPairsSecond, vetAux);
+	int sizeAllPairs = GenPairs(s, allPairsFirst, allPairsSecond, vetAux, pat, g);
 	// Check allPairs, get candiPairs
-	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux);
+	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux, pat, g, revpat, revg);
 
 	// For tmp dfs store
 	int *vecFirst, *vecSecond;
@@ -815,24 +650,15 @@ bool dfs(const State &s, VetAuxiliares &vetAux)
 	memcpy(vecFirst, candiPairsFirst, sizeCandiPairs * sizeof(int));
 	memcpy(vecSecond, candiPairsSecond, sizeCandiPairs * sizeof(int));
 
-	//printf("threadId %d contador %d ref s => %d %d\n", threadId, contador, &vecFirst, &vecSecond);
-
 	bool ret = false;
-	//if (threadIdx.x == 0) printf("threadID %d sizeVec %d \n",threadIdx.x, sizeVec);
-
-	// Next recursive	
-	//printf("sizeVec %d s[threadIdx.x].core1[0] %d \n", sizeVec s[threadIdx.x].core1[0]);
-
-	/*if (threadIdx.x == 0)
-		printf("sizeVec  %d \n", sizeVec);*/
-
+	
 	for (int i = 0;i < sizeVec;i++)
 	{
 		State ns = s;
 
 		int a = vecFirst[i], b = vecSecond[i];
 		
-		UpdateState(ns, a, b);
+		UpdateState(ns, a, b, pat, g, revpat, revg);
 
 		memcpy(m1t, vetAux.m1, maxv * sizeof(int));
 		memcpy(m2t, vetAux.m2, maxv * sizeof(int));
@@ -852,8 +678,7 @@ bool dfs(const State &s, VetAuxiliares &vetAux)
 		memcpy(t1t, vetAux.t1, maxv * sizeof(int));
 		memcpy(t2t, vetAux.t2, maxv * sizeof(int));
 		
-		ret = dfs(ns, vetAux);	
-		
+		ret = dfs(ns, vetAux, pat, g, revpat, revg);		
 
 		memcpy(vetAux.m1, m1t, maxv * sizeof(int));
 		memcpy(vetAux.m2, m2t, maxv * sizeof(int));
@@ -889,12 +714,9 @@ bool dfs(const State &s, VetAuxiliares &vetAux)
 }
 
 __device__
-bool query(const State &s, VetAuxiliares &vetAux)
+bool query(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	//printf("Referencia s => %d \n", &s);
-
-	//printf("QUERY s[threadIdx.x].core1[0] %d \n", s.core1[0]);
-	return dfs(s, vetAux);
+	return dfs(s, vetAux, pat, g, revpat, revg);
 }
 __device__
 Graph copyGraph(Graph &graphSource) {
@@ -922,8 +744,8 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 {
 	int matches = 0;
 	
-	if (threadIdx.x == 0)
-		printf("Processando qtde modelos %d qtde grafos %d qtde arquivos %d\n", sizeDB, sizeQuery, sizeQueryP);
+	if (threadIdx.x == 0 && blockIdx.x == 0)
+		printf("Processando...\nThreads %d Blocks %d Modelos %d Grafos %d Arquivos %d\n",NTHREADS, NBLOCKS, sizeDB, sizeQuery, sizeQueryP);
 
 	/*printf(" QueryGraph \n");
 	printGraph(QueryGraph, sizeQuery);
@@ -932,64 +754,63 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 
 	for (int i = 0;i < (int)sizeQueryP;i++)
 	{
-		for (int j = threadIdx.x;j < sizeQuery;j += NTHREADS) {
+		int init = threadIdx.x + blockIdx.x * blockDim.x;
+
+		for (int j = init;j < sizeQuery;j += NTHREADS * NBLOCKS) {
 			matches = 0;
+			Graph pat, g, revpat, revg;
 			State s;
 			s.init();	
 
 			VetAuxiliares vetAux;
 			
-			//printf("SOLVE s[threadIdx.x].core1[0] %d \n", s.core1[0]);
-
-			pat[threadIdx.x].aloca();
-			pat[threadIdx.x].en = QueryGraph[j].en;
-			pat[threadIdx.x].vn = QueryGraph[j].vn;
+			pat.aloca();
+			pat.en = QueryGraph[j].en;
+			pat.vn = QueryGraph[j].vn;
 
 			for (int k = 0; k < QueryGraph[j].en;k++) {
-				pat[threadIdx.x].edge[k] = QueryGraph[j].edge[k];
-				pat[threadIdx.x].head[k] = QueryGraph[j].head[k];
+				pat.edge[k] = QueryGraph[j].edge[k];
+				pat.head[k] = QueryGraph[j].head[k];
 			}
 
 			for (int k = 0; k < QueryGraph[j].vn;k++) {
-				pat[threadIdx.x].vtx[k] = QueryGraph[j].vtx[k];
+				pat.vtx[k] = QueryGraph[j].vtx[k];
 			}
 
-			GenRevGraph(pat[threadIdx.x], revpat[threadIdx.x]);
+			GenRevGraph(pat, revpat);
 
 			for (int x = 0; x < sizeDB; x++)
 			{				
-				g[threadIdx.x].aloca();
-				g[threadIdx.x].en = DBGraph[x].en;
-				g[threadIdx.x].vn = DBGraph[x].vn;
+				g.aloca();
+				g.en = DBGraph[x].en;
+				g.vn = DBGraph[x].vn;
 
 				for (int k = 0; k < DBGraph[x].en;k++) {
-					g[threadIdx.x].edge[k] = DBGraph[x].edge[k];
-					g[threadIdx.x].head[k] = DBGraph[x].head[k];
+					g.edge[k] = DBGraph[x].edge[k];
+					g.head[k] = DBGraph[x].head[k];
 				}
 
 				for (int k = 0; k < DBGraph[x].vn;k++) {
-					g[threadIdx.x].vtx[k] = DBGraph[x].vtx[k];
+					g.vtx[k] = DBGraph[x].vtx[k];
 				}
 
-				//printf("pat.vn %d  g.vn %d pat.en %d g.en %d \n", pat[threadIdx.x].vn, g[threadIdx.x].vn, pat[threadIdx.x].en, g[threadIdx.x].en);
-				if (pat[threadIdx.x].vn > g[threadIdx.x].vn || pat[threadIdx.x].en > g[threadIdx.x].en) continue;
+				if (pat.vn > g.vn || pat.en > g.en) continue;
 
-				GenRevGraph(g[threadIdx.x], revg[threadIdx.x]);
-
-				
-				if (query(s, vetAux)) // Matched
+				GenRevGraph(g, revg);
+								
+				if (query(s, vetAux, pat, g, revpat, revg)) // Matched
 				{
 					matches++;
 				}
 
-				free(g[threadIdx.x].head);
-				free(g[threadIdx.x].vtx);
-				free(g[threadIdx.x].edge);
+				free(g.head);
+				free(g.vtx);
+				free(g.edge);
 			}
 
-			free(pat[threadIdx.x].head);
-			free(pat[threadIdx.x].vtx);
-			free(pat[threadIdx.x].edge);
+			free(pat.head);
+			free(pat.vtx);
+			free(pat.edge);
 			
 			printf("%s %d Matches found %d \n", QueryPath, j , matches);
 		}		
@@ -1095,4 +916,146 @@ void printGraph(Graph grafo[], int size) {
 			printf("indice %d Vtx[j].id %d Vtx[j].label %d \n",j, grafo[i].vtx[j].id, grafo[i].vtx[j].label);
 		}
 	}
+}
+__device__
+void ClearArrays(VetAuxiliares &vetAux) {
+	for (int i = 0; i < maxv;i++) {
+		vetAux.m1[i] = 0, vetAux.m2[i] = 0;
+		vetAux.tin1[i] = 0, vetAux.tin2[i] = 0;
+		vetAux.tout1[i] = 0, vetAux.tout2[i] = 0;
+		vetAux.n1[i] = 0, vetAux.n2[i] = 0;
+		vetAux.ns1[i] = 0, vetAux.ns2[i] = 0;
+		vetAux.t1[i] = 0, vetAux.t2[i] = 0;
+	}
+
+	vetAux.sizeM1 = 0, vetAux.sizeM2 = 0;
+	vetAux.sizeTin1 = 0, vetAux.sizeTin2 = 0;
+	vetAux.sizeTout1 = 0, vetAux.sizeTout2 = 0;
+	vetAux.sizeN1 = 0, vetAux.sizeN2 = 0;
+	vetAux.sizeNS1 = 0, vetAux.sizeNS2 = 0;
+}
+
+__device__
+void quicksort(int ls[], int l, int r) {
+	int i, j, k, p, q;
+	int v;
+	if (r <= l)
+		return;
+	v = ls[r];
+	i = l - 1;
+	j = r;
+	p = l - 1;
+	q = r;
+	for (;;) {
+		while (ls[++i] < v);
+		while (v < ls[--j])
+			if (j == l)
+				break;
+		if (i >= j)
+			break;
+		swap(ls[i], ls[j]);
+		if (ls[i] == v) {
+			p++;
+			swap(ls[p], ls[i]);
+		}
+		if (v == ls[j]) {
+			q--;
+			swap(ls[q], ls[j]);
+		}
+	}
+	swap(ls[i], ls[r]);
+	j = i - 1;
+	i++;
+	for (k = l; k < p; k++, j--)
+		swap(ls[k], ls[j]);
+	for (k = r - 1; k > q; k--, i++)
+		swap(ls[k], ls[i]);
+
+	quicksort(ls, l, j);
+	quicksort(ls, i, r);
+}
+__device__
+int Union(int arr1[], int arr2[], int arr3[], int m, int n)
+{
+	int i = 0, j = 0, x = 0;
+
+	while (i < m && j < n) {
+		if (arr1[i] < arr2[j]) {
+			arr3[x++] = arr1[i++];
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				arr3[x++] = arr2[j++];
+			}
+			else {
+				arr3[x++] = arr2[j++];
+				i++;
+			}
+	}
+
+	/* Print remaining elements of the larger array */
+	while (i < m)
+		arr3[x++] = arr1[i++];
+	while (j < n)
+		arr3[x++] = arr2[j++];
+
+	return x;
+}
+__device__
+int Difference(int arr1[], int arr2[], int arr3[], int n1, int n2)
+{
+	int i = 0, j = 0, k = 0, x = 0;
+	while (i < n1 && j < n2) {
+
+		// If not common, print smaller 
+		if (arr1[i] < arr2[j]) {
+			arr3[x++] = arr1[i++];
+			k++;
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				j++;
+				k++;
+			}
+		// Skip common element 
+			else {
+				i++;
+				j++;
+			}
+	}
+
+	// printing remaining elements 
+	while (i < n1) {
+
+		arr3[x++] = arr1[i++];
+		k++;
+	}
+	while (j < n2) {
+		arr2[x++] = arr1[j++];
+		k++;
+	}
+
+	return x;
+}
+__device__
+int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
+{
+	int i = 0, j = 0, k = 0, x = 0;
+	while (i < n1 && j < n2) {
+
+		// If not common, jump
+		if (arr1[i] < arr2[j]) {
+			i++, k++;
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				j++, k++;
+			}
+			else {
+				arr3[x++] = arr1[i++];
+				j++;
+			}
+	}
+
+	return x;
 }
