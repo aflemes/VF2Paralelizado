@@ -1,8 +1,8 @@
-const static int maxv = 20;
+const static int maxv = 10;
 const static int maxe = 22;
-const int MAX_GRAPHS_DB = 107;
-const int MAX_GRAPHS_QUERY = 10;
-const int NBLOCKS = 1, NTHREADS = 10;
+const int MAX_GRAPHS_DB = 196;
+const int MAX_GRAPHS_QUERY = 20;
+const int NBLOCKS = 5, NTHREADS = 20;
 
 #include "head.h"
 #include "class.h"
@@ -18,19 +18,21 @@ Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_QUERY], *vec;
 
 __device__
 int contador = 0;
+unsigned int matches[MAX_GRAPHS_QUERY];
 
 void init()
 {
 	ofstream fout;
 	fout.open("time.txt");
 	fout.close();
+	memset(matches, 0, MAX_GRAPHS_QUERY * sizeof(int));
 }
 
 string dataset() {
-	string dbPath = "Data/Q10e10.min.data";
+	string dbPath = "Data/db/Q10.min.data";
 	QueryPathSize = 0;
 
-	QueryPath[QueryPathSize] = "Data/Q4.min.my";
+	QueryPath[QueryPathSize] = "Data/query/Q4.min.my";
 	QueryPathPointer[QueryPathSize] = strlen(QueryPath[QueryPathSize]);
 	QueryPathSize++;
 
@@ -740,12 +742,16 @@ Graph copyGraph(Graph &graphSource) {
 
 
 __global__
-void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP)
+void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP, unsigned int *dev_matches)
 {
-	int matches = 0;
-	
-	if (threadIdx.x == 0 && blockIdx.x == 0)
-		printf("Processando...\nThreads %d Blocks %d Modelos %d Grafos %d Arquivos %d\n",NTHREADS, NBLOCKS, sizeDB, sizeQuery, sizeQueryP);
+	int x, result;
+	int controle[NBLOCKS * NTHREADS];
+
+	memset(controle, 0, NBLOCKS * NTHREADS * sizeof(int));
+
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		printf("Processando...\nThreads %d Blocks %d Modelos %d Grafos %d Arquivos %d\n", NTHREADS, NBLOCKS, sizeDB, sizeQuery, sizeQueryP);
+	}
 
 	/*printf(" QueryGraph \n");
 	printGraph(QueryGraph, sizeQuery);
@@ -755,9 +761,13 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 	for (int i = 0;i < (int)sizeQueryP;i++)
 	{
 		int init = threadIdx.x + blockIdx.x * blockDim.x;
+		
+		while(controle[init] < sizeQuery){
+			int j = controle[init];
 
-		for (int j = init;j < sizeQuery;j += NTHREADS * NBLOCKS) {
-			matches = 0;
+			if (init >= sizeDB)
+				continue;
+
 			Graph pat, g, revpat, revg;
 			State s;
 			s.init();	
@@ -778,9 +788,10 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 			}
 
 			GenRevGraph(pat, revpat);
-
-			for (int x = 0; x < sizeDB; x++)
-			{				
+			
+			result = 0;
+			for (x = init; x < sizeDB; x+= NTHREADS * NBLOCKS)
+			{
 				g.aloca();
 				g.en = DBGraph[x].en;
 				g.vn = DBGraph[x].vn;
@@ -794,13 +805,15 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 					g.vtx[k] = DBGraph[x].vtx[k];
 				}
 
+				//printf("x => %d pat.vn %d g.vn %d pat.en %d g.en %d \n", x, pat.vn, g.vn, pat.en, g.en);
+
 				if (pat.vn > g.vn || pat.en > g.en) continue;
 
 				GenRevGraph(g, revg);
-								
+				
 				if (query(s, vetAux, pat, g, revpat, revg)) // Matched
 				{
-					matches++;
+					atomicAdd(&dev_matches[j], 1);
 				}
 
 				free(g.head);
@@ -808,11 +821,11 @@ void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPoi
 				free(g.edge);
 			}
 
+			controle[init]++;
+
 			free(pat.head);
 			free(pat.vtx);
 			free(pat.edge);
-			
-			printf("%s %d Matches found %d \n", QueryPath, j , matches);
 		}		
 	}
 }
@@ -857,7 +870,7 @@ void beforeSolve() {
 	Graph *DBGraphCUDA, *QueryGraphCUDA;
 	char *QueryPathCUDA;
 	int *QueryPathPointerCUDA;
-	
+	unsigned int *MatchesCUDA;
 	cudaError_t cudaStatus;	
 	float time;
 	cudaEvent_t start, stop;
@@ -873,10 +886,42 @@ void beforeSolve() {
 	QueryPathCUDA = allocaString(QueryPath, QueryPathSize);
 
 	cudaMalloc((void **)&QueryPathPointerCUDA, MAX_GRAPHS_QUERY * sizeof(int));
-	cudaMemcpy(QueryPathPointerCUDA, QueryPathPointer, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
+	cudaStatus = cudaMemcpy(QueryPathPointerCUDA, QueryPathPointer, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
 
-	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize);
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "QueryPathPointerCUDA h->d cudaMemcpy failed!");
+		goto Error;
+	}
+
+	cudaMalloc((void **)&MatchesCUDA, MAX_GRAPHS_QUERY * sizeof(int));
+	cudaStatus = cudaMemcpy(MatchesCUDA, matches, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
+
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "MatchesCUDA h-> d cudaMemcpy failed!");
+		goto Error;
+	}
+
+	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize, MatchesCUDA);
 	
+	cudaStatus = cudaDeviceSynchronize();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+		goto Error;
+	}
+
+	cudaStatus = cudaMemcpy(matches, MatchesCUDA, MAX_GRAPHS_QUERY * sizeof(int), cudaMemcpyDeviceToHost);
+	
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "MatchesCUDA d->h cudaMemcpy failed!");
+		goto Error;
+	}
+
+	for(int j=0; j < QueryPathSize;j++)
+		for (int i = 0; i < QueryGraphSize;i++) {
+			printf("%s %d Matches found %d \n", QueryPath[j], i, matches[i]);
+		}
+
+
 	cudaEventRecord(stop, 0);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&time, start, stop);
