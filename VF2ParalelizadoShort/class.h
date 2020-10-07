@@ -2,10 +2,8 @@ struct Vertex
 {
 	int id;
 	int label;
-	int seq;
-	bool del;
 	__device__ __host__
-		Vertex(int _id = 0, int _label = 0) : id(_id), label(_label), seq(-1), del(0) {}
+		Vertex(int _id = 0, int _label = 0) : id(_id), label(_label) {}
 	__device__ __host__
 		~Vertex() {}
 };
@@ -16,10 +14,9 @@ struct Edge
 	int v;
 	int label;
 	int next;
-	bool del;
 
 	__device__ __host__
-		Edge(int _u = 0, int _v = 0, int _label = 0, int _next = -1) : u(_u), v(_v), label(_label), next(_next), del(0) {}
+		Edge(int _u = 0, int _v = 0, int _label = 0, int _next = -1) : u(_u), v(_v), label(_label), next(_next) {}
 	__device__ __host__
 		bool operator == (const Edge &o) const
 	{
@@ -70,29 +67,6 @@ public:
 		void adde(int u, int v, int label) {
 		addse(u, v, label);
 		addse(v, u, label);
-	}
-	__device__ __host__
-		void delse(int u, int v, int label) {
-		for (int i = head[u];~i;i = edge[i].next)
-		{
-			if (edge[i].u == u && edge[i].v == v && edge[i].label == label)
-			{
-				edge[i].del = 1;
-				return;
-			}
-		}
-	}
-	__device__ __host__
-		void dele(int u, int v, int label) {
-		for (int i = head[u];~i;i = edge[i].next)
-		{
-			if (edge[i].u == u && edge[i].v == v && edge[i].label == label)
-			{
-				edge[i].del = 1;
-				edge[i ^ 1].del = 1;
-				return;
-			}
-		}
 	}
 
 public:

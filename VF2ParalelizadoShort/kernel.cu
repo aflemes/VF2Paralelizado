@@ -1,8 +1,16 @@
-const static int maxv = 10;
-const static int maxe = 22;
-const int MAX_GRAPHS_DB = 196;
-const int MAX_GRAPHS_QUERY = 20;
-const int NBLOCKS = 5, NTHREADS = 20;
+const static int maxv = 20;
+const static int maxe = 42;
+const int MAX_GRAPHS_DB = 1024;
+const int MAX_GRAPHS_QUERY = 2;
+int NBLOCKS, NTHREADS;
+const int maxThreadsPerBlock = 256, minBlocksPerMultiprocessor = 8;
+const int MAX = 512;
+__device__
+int controle[MAX];
+
+__device__
+int aloca[MAX];
+
 
 #include "head.h"
 #include "class.h"
@@ -29,7 +37,7 @@ void init()
 }
 
 string dataset() {
-	string dbPath = "Data/db/Q10.min.data";
+	string dbPath = "Data/db/Q20.min.data";
 	QueryPathSize = 0;
 
 	QueryPath[QueryPathSize] = "Data/query/Q4.min.my";
@@ -209,6 +217,9 @@ Graph* alocaGraph(Graph *Grafo, int GraphSize) {
 		GraphHost[k].en = Grafo[k].en;
 		GraphHost[k].vn = Grafo[k].vn;
 	}
+	
+	//int sizeofGrafo = GraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
+	//printf("GraphSize %d Graph mem. usage => %d \nGraph size %d \nVertex size => %d\nEdge size => %d \n", GraphSize, sizeofGrafo,sizeof(Graph), sizeof(Vertex), sizeof(Edge));
 
 	cudaMalloc((void **)&GraphCUDA, GraphSize * sizeof(Graph));
 	cudaMemcpy(GraphCUDA, GraphHost, (sizeof(Graph) * GraphSize), cudaMemcpyHostToDevice);
@@ -741,93 +752,94 @@ Graph copyGraph(Graph &graphSource) {
 }
 
 
-__global__
-void solve(Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, int sizeQueryP, unsigned int *dev_matches)
+//As discussed in detail in Multiprocessor Level, the fewer registers a kernel uses, the more threads and thread blocks are likely to reside
+//on a multiprocessor, which can improve performance.
+//Therefore, the compiler uses heuristics to minimize register usage while keeping register spilling and instruction count to a minimum.
+//An application can optionally aid these heuristics by providing additional information to the compiler in the form of launch bounds that are 
+//specified using the __launch_bounds__() qualifier in the definition of a __global__ function :
+__global__ void 
+__launch_bounds__(maxThreadsPerBlock, minBlocksPerMultiprocessor)
+solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, unsigned int *dev_matches)
 {
-	int x, result;
-	int controle[NBLOCKS * NTHREADS];
-
-	memset(controle, 0, NBLOCKS * NTHREADS * sizeof(int));
-
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		printf("Processando...\nThreads %d Blocks %d Modelos %d Grafos %d Arquivos %d\n", NTHREADS, NBLOCKS, sizeDB, sizeQuery, sizeQueryP);
-	}
+	
+	memset(controle, 0, MAX * sizeof(int));
+	memset(aloca, false, MAX * sizeof(bool));
 
 	/*printf(" QueryGraph \n");
 	printGraph(QueryGraph, sizeQuery);
 	printf("\n\n\n DBGraph \n\n\n");
 	printGraph(DBGraph, sizeDB);*/
 
-	for (int i = 0;i < (int)sizeQueryP;i++)
-	{
-		int init = threadIdx.x + blockIdx.x * blockDim.x;
+	int init = threadIdx.x + blockIdx.x * blockDim.x;
 		
-		while(controle[init] < sizeQuery){
-			int j = controle[init];
+	while (controle[init] < sizeQuery) {
+		int j = controle[init];
 
-			if (init >= sizeDB)
-				continue;
+		if (init >= sizeDB)
+			continue;
 
-			Graph pat, g, revpat, revg;
-			State s;
-			s.init();	
+		Graph pat, g, revpat, revg;
+		State s;
+		s.init();
 
-			VetAuxiliares vetAux;
-			
-			pat.aloca();
-			pat.en = QueryGraph[j].en;
-			pat.vn = QueryGraph[j].vn;
+		VetAuxiliares vetAux;
 
-			for (int k = 0; k < QueryGraph[j].en;k++) {
-				pat.edge[k] = QueryGraph[j].edge[k];
-				pat.head[k] = QueryGraph[j].head[k];
+		pat.aloca();
+		pat.en = QueryGraph[j].en;
+		pat.vn = QueryGraph[j].vn;
+
+		for (int k = 0; k < QueryGraph[j].en;k++) {
+			pat.edge[k] = QueryGraph[j].edge[k];
+			pat.head[k] = QueryGraph[j].head[k];
+		}
+
+		for (int k = 0; k < QueryGraph[j].vn;k++) {
+			pat.vtx[k] = QueryGraph[j].vtx[k];
+		}
+
+		GenRevGraph(pat, revpat);
+
+		for (int x = init; x < sizeDB; x += NTHREADS * NBLOCKS)
+		{
+			if (!aloca[init]) {				
+				g.aloca(), aloca[init] = true;
 			}
 
-			for (int k = 0; k < QueryGraph[j].vn;k++) {
-				pat.vtx[k] = QueryGraph[j].vtx[k];
+			g.en = DBGraph[x].en;
+			g.vn = DBGraph[x].vn;
+
+			for (int k = 0; k < DBGraph[x].en;k++) {
+				g.edge[k] = DBGraph[x].edge[k];
+				g.head[k] = DBGraph[x].head[k];
 			}
 
-			GenRevGraph(pat, revpat);
-			
-			result = 0;
-			for (x = init; x < sizeDB; x+= NTHREADS * NBLOCKS)
+			for (int k = 0; k < DBGraph[x].vn;k++) {
+				g.vtx[k] = DBGraph[x].vtx[k];
+			}
+
+			//printf("x => %d pat.vn %d g.vn %d pat.en %d g.en %d \n", x, pat.vn, g.vn, pat.en, g.en);
+
+			if (pat.vn > g.vn || pat.en > g.en) continue;
+
+			GenRevGraph(g, revg);
+
+			if (query(s, vetAux, pat, g, revpat, revg)) // Matched
 			{
-				g.aloca();
-				g.en = DBGraph[x].en;
-				g.vn = DBGraph[x].vn;
-
-				for (int k = 0; k < DBGraph[x].en;k++) {
-					g.edge[k] = DBGraph[x].edge[k];
-					g.head[k] = DBGraph[x].head[k];
-				}
-
-				for (int k = 0; k < DBGraph[x].vn;k++) {
-					g.vtx[k] = DBGraph[x].vtx[k];
-				}
-
-				//printf("x => %d pat.vn %d g.vn %d pat.en %d g.en %d \n", x, pat.vn, g.vn, pat.en, g.en);
-
-				if (pat.vn > g.vn || pat.en > g.en) continue;
-
-				GenRevGraph(g, revg);
-				
-				if (query(s, vetAux, pat, g, revpat, revg)) // Matched
-				{
-					atomicAdd(&dev_matches[j], 1);
-				}
-
-				free(g.head);
-				free(g.vtx);
-				free(g.edge);
+				atomicAdd(&dev_matches[j], 1);
 			}
 
-			controle[init]++;
+			free(revg.head);
+			free(revg.vtx);
+			free(revg.edge);
+		}
 
-			free(pat.head);
-			free(pat.vtx);
-			free(pat.edge);
-		}		
+		controle[init]++;
+
+		free(revpat.head);
+		free(revpat.vtx);
+		free(revpat.edge);
 	}
+	
 }
 
 void cudaShowLimit() {
@@ -851,9 +863,13 @@ void cudaShowLimit() {
 	limit = 1024 * 64;
 
 	cudaDeviceSetLimit(cudaLimitStackSize, limit);	
+
+	limit = 1024 * 1024 * 32;
+
 	//cudaDeviceSetLimit(cudaLimitPrintfFifoSize, limit);
 
-	limit = 1024 * 1024 * 1024;
+	limit = 1024 * 1024 * 32;
+
 	//cudaDeviceSetLimit(cudaLimitMallocHeapSize, limit);
 
 	limit = 0;
@@ -885,6 +901,11 @@ void beforeSolve() {
 	DBGraphCUDA = alocaGraph(DBGraph, DBGraphSize);
 	QueryPathCUDA = allocaString(QueryPath, QueryPathSize);
 
+	int sizeofGrafo = DBGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
+	sizeofGrafo+= QueryGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
+
+	//printf("CUDA mem. usage => %d \n", sizeofGrafo);
+
 	cudaMalloc((void **)&QueryPathPointerCUDA, MAX_GRAPHS_QUERY * sizeof(int));
 	cudaStatus = cudaMemcpy(QueryPathPointerCUDA, QueryPathPointer, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
 
@@ -901,7 +922,9 @@ void beforeSolve() {
 		goto Error;
 	}
 
-	solve << <NBLOCKS, NTHREADS >> > (QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, QueryPathSize, MatchesCUDA);
+	printf("Processando...\nBlocks %d Threads %d Modelos %d Grafos %d \n", NBLOCKS, NTHREADS, DBGraphSize, QueryGraphSize);
+
+	solve << <NBLOCKS, NTHREADS >> > (NBLOCKS, NTHREADS, QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
 	
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
@@ -941,9 +964,10 @@ Error:
 	cudaFree(QueryPathCUDA);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-	// 0: no output matching ans, 1: output matching ans
+	if (argc >= 2) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
+
 	init();
 	input();
 	beforeSolve();	
