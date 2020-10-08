@@ -22,8 +22,6 @@ struct Edge
 	{
 		return u == o.u&&v == o.v&&label == o.label;
 	}
-	__device__ __host__
-		~Edge() {}
 };
 
 struct Graph

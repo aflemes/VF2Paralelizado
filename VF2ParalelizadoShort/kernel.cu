@@ -1,16 +1,12 @@
-const static int maxv = 20;
-const static int maxe = 42;
-const int MAX_GRAPHS_DB = 1024;
-const int MAX_GRAPHS_QUERY = 2;
-int NBLOCKS, NTHREADS;
+const static int maxv = 40;
+const static int maxe = 80;
+const int MAX_GRAPHS_DB = 8192;
+const int MAX_GRAPHS_QUERY = 64;
+int NBLOCKS = 1, NTHREADS = 1;
 const int maxThreadsPerBlock = 256, minBlocksPerMultiprocessor = 8;
 const int MAX = 512;
 __device__
 int controle[MAX];
-
-__device__
-int aloca[MAX];
-
 
 #include "head.h"
 #include "class.h"
@@ -28,23 +24,21 @@ __device__
 int contador = 0;
 unsigned int matches[MAX_GRAPHS_QUERY];
 
+string dbPath = "Data/db/Q40.data";
+string queryPath = "Data/query/Q4.min.my";
+
 void init()
 {
-	ofstream fout;
-	fout.open("time.txt");
-	fout.close();
 	memset(matches, 0, MAX_GRAPHS_QUERY * sizeof(int));
 }
 
-string dataset() {
-	string dbPath = "Data/db/Q20.min.data";
-	QueryPathSize = 0;
-
-	QueryPath[QueryPathSize] = "Data/query/Q4.min.my";
-	QueryPathPointer[QueryPathSize] = strlen(QueryPath[QueryPathSize]);
-	QueryPathSize++;
-
-	return dbPath;
+void input()
+{
+	//le o(s) grafo(s) query(s)
+	ReadQuery(queryPath);
+	//le o(s) grafo(s) modelo(s)
+	ReadDB(dbPath);
+	puts("Read Data Finished!");
 }
 
 void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
@@ -141,42 +135,160 @@ void GenRevGraph(const Graph &src, Graph &dst)
 		dst.addse(src.edge[i].v, src.edge[i].u, src.edge[i].label);
 }
 
-void input()
-{
-	// Standard data set
-	string dbPath = dataset();
+__device__
+void printGraph(Graph grafo[], int size) {
+	for (int i = 0;i < size; i++) {
+		printf("Indice %d Graph[i].en %d Graph[i].vn %d => \n", i, grafo[i].en, grafo[i].vn);
 
-	string tt = "Output/ans";
-	for (int i = 0;i < (int)QueryPathSize;i++) {
-		ReadQuery(QueryPath[i]);
+		for (int j = 0; j < grafo[i].en;j++) {
+			printf("indice %d Edge[j].u %d Edge[j].v %d Edge[j].next %d\n", j, grafo[i].edge[j].u, grafo[i].edge[j].v, grafo[i].edge[j].next);
+		}
+		for (int j = 0; j < grafo[i].vn;j++) {
+			printf("indice %d Vtx[j].id %d Vtx[j].label %d \n", j, grafo[i].vtx[j].id, grafo[i].vtx[j].label);
+		}
+	}
+}
+__device__
+void ClearArrays(VetAuxiliares &vetAux) {
+	for (int i = 0; i < maxv;i++) {
+		vetAux.m1[i] = 0, vetAux.m2[i] = 0;
+		vetAux.tin1[i] = 0, vetAux.tin2[i] = 0;
+		vetAux.tout1[i] = 0, vetAux.tout2[i] = 0;
+		vetAux.n1[i] = 0, vetAux.n2[i] = 0;
+		vetAux.ns1[i] = 0, vetAux.ns2[i] = 0;
+		vetAux.t1[i] = 0, vetAux.t2[i] = 0;
 	}
 
-	ReadDB(dbPath);
-	puts("Read Data Finished!");
+	vetAux.sizeM1 = 0, vetAux.sizeM2 = 0;
+	vetAux.sizeTin1 = 0, vetAux.sizeTin2 = 0;
+	vetAux.sizeTout1 = 0, vetAux.sizeTout2 = 0;
+	vetAux.sizeN1 = 0, vetAux.sizeN2 = 0;
+	vetAux.sizeNS1 = 0, vetAux.sizeNS2 = 0;
 }
 
-char* allocaString(const char **str, int size) {
-	char *localCUDA, *a;
-	int TAM = 0;
+__device__
+void quicksort(int ls[], int l, int r) {
+	int i, j, k, p, q;
+	int v;
+	if (r <= l)
+		return;
+	v = ls[r];
+	i = l - 1;
+	j = r;
+	p = l - 1;
+	q = r;
+	for (;;) {
+		while (ls[++i] < v);
+		while (v < ls[--j])
+			if (j == l)
+				break;
+		if (i >= j)
+			break;
+		swap(ls[i], ls[j]);
+		if (ls[i] == v) {
+			p++;
+			swap(ls[p], ls[i]);
+		}
+		if (v == ls[j]) {
+			q--;
+			swap(ls[q], ls[j]);
+		}
+	}
+	swap(ls[i], ls[r]);
+	j = i - 1;
+	i++;
+	for (k = l; k < p; k++, j--)
+		swap(ls[k], ls[j]);
+	for (k = r - 1; k > q; k--, i++)
+		swap(ls[k], ls[i]);
 
-	//aloca
-	for (int i = 0;i < QueryPathSize;i++)
-		TAM += QueryPathPointer[i];
+	quicksort(ls, l, j);
+	quicksort(ls, i, r);
+}
+__device__
+int Union(int arr1[], int arr2[], int arr3[], int m, int n)
+{
+	int i = 0, j = 0, x = 0;
 
-	a = (char *)malloc(TAM * sizeof(char));
-
-	//flatten
-	int subidx = 0;
-	for (int i = 0;i < QueryPathSize;i++)
-	{
-		for (int j = 0; j < QueryPathPointer[i]; j++)
-			a[subidx++] = QueryPath[i][j];
+	while (i < m && j < n) {
+		if (arr1[i] < arr2[j]) {
+			arr3[x++] = arr1[i++];
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				arr3[x++] = arr2[j++];
+			}
+			else {
+				arr3[x++] = arr2[j++];
+				i++;
+			}
 	}
 
-	cudaMalloc((void **)&localCUDA, TAM * sizeof(char));
-	cudaMemcpy(localCUDA, a, TAM * sizeof(char), cudaMemcpyHostToDevice);
+	/* Print remaining elements of the larger array */
+	while (i < m)
+		arr3[x++] = arr1[i++];
+	while (j < n)
+		arr3[x++] = arr2[j++];
 
-	return localCUDA;
+	return x;
+}
+__device__
+int Difference(int arr1[], int arr2[], int arr3[], int n1, int n2)
+{
+	int i = 0, j = 0, k = 0, x = 0;
+	while (i < n1 && j < n2) {
+
+		// If not common, print smaller 
+		if (arr1[i] < arr2[j]) {
+			arr3[x++] = arr1[i++];
+			k++;
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				j++;
+				k++;
+			}
+		// Skip common element 
+			else {
+				i++;
+				j++;
+			}
+	}
+
+	// printing remaining elements 
+	while (i < n1) {
+
+		arr3[x++] = arr1[i++];
+		k++;
+	}
+	while (j < n2) {
+		arr2[x++] = arr1[j++];
+		k++;
+	}
+
+	return x;
+}
+__device__
+int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
+{
+	int i = 0, j = 0, k = 0, x = 0;
+	while (i < n1 && j < n2) {
+
+		// If not common, jump
+		if (arr1[i] < arr2[j]) {
+			i++, k++;
+		}
+		else
+			if (arr2[j] < arr1[i]) {
+				j++, k++;
+			}
+			else {
+				arr3[x++] = arr1[i++];
+				j++;
+			}
+	}
+
+	return x;
 }
 
 Graph* alocaGraph(Graph *Grafo, int GraphSize) {
@@ -759,12 +871,11 @@ Graph copyGraph(Graph &graphSource) {
 //specified using the __launch_bounds__() qualifier in the definition of a __global__ function :
 __global__ void 
 __launch_bounds__(maxThreadsPerBlock, minBlocksPerMultiprocessor)
-solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, char *QueryPath, int *QueryPathPointer, int sizeQuery, int sizeDB, unsigned int *dev_matches)
+solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, int sizeQuery, int sizeDB, unsigned int *dev_matches)
 {
 	
 	memset(controle, 0, MAX * sizeof(int));
-	memset(aloca, false, MAX * sizeof(bool));
-
+	
 	/*printf(" QueryGraph \n");
 	printGraph(QueryGraph, sizeQuery);
 	printf("\n\n\n DBGraph \n\n\n");
@@ -801,10 +912,9 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, char *QueryP
 
 		for (int x = init; x < sizeDB; x += NTHREADS * NBLOCKS)
 		{
-			if (!aloca[init]) {				
-				g.aloca(), aloca[init] = true;
-			}
+			if (pat.vn > DBGraph[x].vn || pat.en > DBGraph[x].en) continue;
 
+			g.aloca();
 			g.en = DBGraph[x].en;
 			g.vn = DBGraph[x].vn;
 
@@ -819,8 +929,6 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, char *QueryP
 
 			//printf("x => %d pat.vn %d g.vn %d pat.en %d g.en %d \n", x, pat.vn, g.vn, pat.en, g.en);
 
-			if (pat.vn > g.vn || pat.en > g.en) continue;
-
 			GenRevGraph(g, revg);
 
 			if (query(s, vetAux, pat, g, revpat, revg)) // Matched
@@ -831,6 +939,11 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, char *QueryP
 			free(revg.head);
 			free(revg.vtx);
 			free(revg.edge);
+
+			free(g.head);
+			free(g.vtx);
+			free(g.edge);
+
 		}
 
 		controle[init]++;
@@ -860,7 +973,7 @@ void cudaShowLimit() {
 	}	
 	//printf("cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
 
-	limit = 1024 * 64;
+	limit = 1024 * 200;
 
 	cudaDeviceSetLimit(cudaLimitStackSize, limit);	
 
@@ -884,8 +997,6 @@ void cudaShowLimit() {
 
 void beforeSolve() {
 	Graph *DBGraphCUDA, *QueryGraphCUDA;
-	char *QueryPathCUDA;
-	int *QueryPathPointerCUDA;
 	unsigned int *MatchesCUDA;
 	cudaError_t cudaStatus;	
 	float time;
@@ -899,20 +1010,11 @@ void beforeSolve() {
 
 	QueryGraphCUDA = alocaGraph(QueryGraph, QueryGraphSize);
 	DBGraphCUDA = alocaGraph(DBGraph, DBGraphSize);
-	QueryPathCUDA = allocaString(QueryPath, QueryPathSize);
-
+	
 	int sizeofGrafo = DBGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
 	sizeofGrafo+= QueryGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
 
 	//printf("CUDA mem. usage => %d \n", sizeofGrafo);
-
-	cudaMalloc((void **)&QueryPathPointerCUDA, MAX_GRAPHS_QUERY * sizeof(int));
-	cudaStatus = cudaMemcpy(QueryPathPointerCUDA, QueryPathPointer, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
-
-	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "QueryPathPointerCUDA h->d cudaMemcpy failed!");
-		goto Error;
-	}
 
 	cudaMalloc((void **)&MatchesCUDA, MAX_GRAPHS_QUERY * sizeof(int));
 	cudaStatus = cudaMemcpy(MatchesCUDA, matches, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
@@ -924,7 +1026,7 @@ void beforeSolve() {
 
 	printf("Processando...\nBlocks %d Threads %d Modelos %d Grafos %d \n", NBLOCKS, NTHREADS, DBGraphSize, QueryGraphSize);
 
-	solve << <NBLOCKS, NTHREADS >> > (NBLOCKS, NTHREADS, QueryGraphCUDA, DBGraphCUDA, QueryPathCUDA, QueryPathPointerCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
+	solve << <NBLOCKS, NTHREADS >> > (NBLOCKS, NTHREADS, QueryGraphCUDA, DBGraphCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
 	
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
@@ -939,10 +1041,10 @@ void beforeSolve() {
 		goto Error;
 	}
 
-	for(int j=0; j < QueryPathSize;j++)
-		for (int i = 0; i < QueryGraphSize;i++) {
-			printf("%s %d Matches found %d \n", QueryPath[j], i, matches[i]);
-		}
+	
+	for (int i = 0; i < QueryGraphSize;i++) {
+		printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
+	}
 
 
 	cudaEventRecord(stop, 0);
@@ -961,170 +1063,15 @@ void beforeSolve() {
 Error:
 	cudaFree(QueryGraphCUDA);
 	cudaFree(DBGraphCUDA);
-	cudaFree(QueryPathCUDA);
 }
 
 int main(int argc, char* argv[])
 {
-	if (argc >= 2) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
+	if (argc == 2) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
+	if (argc == 3) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3];
 
 	init();
 	input();
 	beforeSolve();	
 }
 
-__device__
-void printGraph(Graph grafo[], int size) {
-	for (int i = 0;i < size; i++) {
-		printf("Indice %d Graph[i].en %d Graph[i].vn %d => \n",i, grafo[i].en, grafo[i].vn);
-
-		for (int j = 0; j < grafo[i].en;j++) {
-			printf("indice %d Edge[j].u %d Edge[j].v %d Edge[j].next %d\n",j, grafo[i].edge[j].u, grafo[i].edge[j].v, grafo[i].edge[j].next);
-		}
-		for (int j = 0; j < grafo[i].vn;j++) {
-			printf("indice %d Vtx[j].id %d Vtx[j].label %d \n",j, grafo[i].vtx[j].id, grafo[i].vtx[j].label);
-		}
-	}
-}
-__device__
-void ClearArrays(VetAuxiliares &vetAux) {
-	for (int i = 0; i < maxv;i++) {
-		vetAux.m1[i] = 0, vetAux.m2[i] = 0;
-		vetAux.tin1[i] = 0, vetAux.tin2[i] = 0;
-		vetAux.tout1[i] = 0, vetAux.tout2[i] = 0;
-		vetAux.n1[i] = 0, vetAux.n2[i] = 0;
-		vetAux.ns1[i] = 0, vetAux.ns2[i] = 0;
-		vetAux.t1[i] = 0, vetAux.t2[i] = 0;
-	}
-
-	vetAux.sizeM1 = 0, vetAux.sizeM2 = 0;
-	vetAux.sizeTin1 = 0, vetAux.sizeTin2 = 0;
-	vetAux.sizeTout1 = 0, vetAux.sizeTout2 = 0;
-	vetAux.sizeN1 = 0, vetAux.sizeN2 = 0;
-	vetAux.sizeNS1 = 0, vetAux.sizeNS2 = 0;
-}
-
-__device__
-void quicksort(int ls[], int l, int r) {
-	int i, j, k, p, q;
-	int v;
-	if (r <= l)
-		return;
-	v = ls[r];
-	i = l - 1;
-	j = r;
-	p = l - 1;
-	q = r;
-	for (;;) {
-		while (ls[++i] < v);
-		while (v < ls[--j])
-			if (j == l)
-				break;
-		if (i >= j)
-			break;
-		swap(ls[i], ls[j]);
-		if (ls[i] == v) {
-			p++;
-			swap(ls[p], ls[i]);
-		}
-		if (v == ls[j]) {
-			q--;
-			swap(ls[q], ls[j]);
-		}
-	}
-	swap(ls[i], ls[r]);
-	j = i - 1;
-	i++;
-	for (k = l; k < p; k++, j--)
-		swap(ls[k], ls[j]);
-	for (k = r - 1; k > q; k--, i++)
-		swap(ls[k], ls[i]);
-
-	quicksort(ls, l, j);
-	quicksort(ls, i, r);
-}
-__device__
-int Union(int arr1[], int arr2[], int arr3[], int m, int n)
-{
-	int i = 0, j = 0, x = 0;
-
-	while (i < m && j < n) {
-		if (arr1[i] < arr2[j]) {
-			arr3[x++] = arr1[i++];
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				arr3[x++] = arr2[j++];
-			}
-			else {
-				arr3[x++] = arr2[j++];
-				i++;
-			}
-	}
-
-	/* Print remaining elements of the larger array */
-	while (i < m)
-		arr3[x++] = arr1[i++];
-	while (j < n)
-		arr3[x++] = arr2[j++];
-
-	return x;
-}
-__device__
-int Difference(int arr1[], int arr2[], int arr3[], int n1, int n2)
-{
-	int i = 0, j = 0, k = 0, x = 0;
-	while (i < n1 && j < n2) {
-
-		// If not common, print smaller 
-		if (arr1[i] < arr2[j]) {
-			arr3[x++] = arr1[i++];
-			k++;
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				j++;
-				k++;
-			}
-		// Skip common element 
-			else {
-				i++;
-				j++;
-			}
-	}
-
-	// printing remaining elements 
-	while (i < n1) {
-
-		arr3[x++] = arr1[i++];
-		k++;
-	}
-	while (j < n2) {
-		arr2[x++] = arr1[j++];
-		k++;
-	}
-
-	return x;
-}
-__device__
-int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
-{
-	int i = 0, j = 0, k = 0, x = 0;
-	while (i < n1 && j < n2) {
-
-		// If not common, jump
-		if (arr1[i] < arr2[j]) {
-			i++, k++;
-		}
-		else
-			if (arr2[j] < arr1[i]) {
-				j++, k++;
-			}
-			else {
-				arr3[x++] = arr1[i++];
-				j++;
-			}
-	}
-
-	return x;
-}
