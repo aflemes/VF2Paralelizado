@@ -20,34 +20,46 @@ int DBGraphSize, QueryGraphSize, QueryPathSize;
 
 Graph DBGraph[MAX_GRAPHS_DB], QueryGraph[MAX_GRAPHS_QUERY], *vec;
 
-__device__
-int contador = 0;
 unsigned int matches[MAX_GRAPHS_QUERY];
 
-string dbPath = "Data/db/Q40.data";
-string queryPath = "Data/query/Q4.min.my";
+char *queryPath, *dbPath;
 
 void init()
 {
+	string qry = "data/query/Q4.min.my";
+	string db = "data/db/Q40.data";
+
+	
+	queryPath = (char*)malloc(size(qry) + 1 * sizeof(char));
+	dbPath = (char*)malloc(size(db) + 1 * sizeof(char));
+
 	memset(matches, 0, MAX_GRAPHS_QUERY * sizeof(int));
+	strcpy_s(queryPath, size(qry) + 1, qry.c_str());
+	strcpy_s(dbPath, size(db) + 1, db.c_str());
 }
 
 void input()
 {
-	//le o(s) grafo(s) query(s)
+	
 	ReadQuery(queryPath);
 	//le o(s) grafo(s) modelo(s)
 	ReadDB(dbPath);
 	puts("Read Data Finished!");
 }
 
-void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
+void ReadFile(char *path, int &graphSize, int MAX_GRAPHS)
 {
 	bool eof = false;
 	graphSize = 0;
 
 	ifstream fin;
-	fin.open(path.c_str());
+
+	fin.open(path);
+
+	if (!fin.is_open()) {
+		printf("Arquivo %s nao encontrado \n", path);
+		return;
+	}
 
 	vec = (Graph*)malloc(MAX_GRAPHS * sizeof(Graph));
 	vec[graphSize].aloca();
@@ -94,7 +106,7 @@ void ReadFile(string path, int &graphSize, int MAX_GRAPHS)
 	fin.close();
 }
 
-void ReadDB(string path)
+void ReadDB(char *path)
 {
 	ReadFile(path, DBGraphSize, MAX_GRAPHS_DB);
 	
@@ -107,9 +119,9 @@ void ReadDB(string path)
 		DBGraph[i].head = vec[i].head;
 	}
 }
-
-void ReadQuery(string path)
+void ReadQuery(char *path)
 {
+	
 	ReadFile(path, QueryGraphSize, MAX_GRAPHS_QUERY);
 
 	for (int i = 0; i < QueryGraphSize;i++) {
@@ -1043,7 +1055,7 @@ void beforeSolve() {
 
 	
 	for (int i = 0; i < QueryGraphSize;i++) {
-		printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
+		//printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
 	}
 
 
@@ -1067,9 +1079,9 @@ Error:
 
 int main(int argc, char* argv[])
 {
-	if (argc == 2) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
-	if (argc == 3) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3];
-
+	if (argc == 3) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
+	if (argc == 4) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3];
+		
 	init();
 	input();
 	beforeSolve();	

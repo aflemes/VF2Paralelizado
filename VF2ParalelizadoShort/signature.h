@@ -1,8 +1,8 @@
 #pragma once
 /*assinatura de metodos*/
-void ReadFile(string path, int &graphSize, int MAX_GRAPHS);
-void ReadDB(string path);
-void ReadQuery(string path);
+void ReadFile(char *path, int &graphSize, int MAX_GRAPHS);
+void ReadDB(char *path);
+void ReadQuery(char *path);
 void input();
 __device__
 void printGraph(Graph Graph[], int size);
