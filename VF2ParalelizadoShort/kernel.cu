@@ -1,7 +1,7 @@
 const static int maxv = 40;
 const static int maxe = 80;
 const int MAX_GRAPHS_DB = 8192;
-const int MAX_GRAPHS_QUERY = 64;
+const int MAX_GRAPHS_QUERY = 2;
 int NBLOCKS = 1, NTHREADS = 1;
 const int maxThreadsPerBlock = 256, minBlocksPerMultiprocessor = 8;
 const int MAX = 512;
@@ -27,20 +27,25 @@ char *queryPath, *dbPath;
 void init()
 {
 	string qry = "data/query/Q4.min.my";
-	string db = "data/db/Q40.data";
+	string db = "data/db/Q8192.data";
+	//string db = "data/db/mygraphdb.min.data";
 
 	
-	queryPath = (char*)malloc(size(qry) + 1 * sizeof(char));
-	dbPath = (char*)malloc(size(db) + 1 * sizeof(char));
-
+	if (queryPath == NULL) {		
+		queryPath = (char*)malloc(size(qry) + 1 * sizeof(char));
+		strcpy_s(queryPath, size(qry) + 1, qry.c_str());
+	}
+	
+	if (dbPath == NULL) {
+		dbPath = (char*)malloc(size(db) + 1 * sizeof(char));
+		strcpy_s(dbPath, size(db) + 1, db.c_str());		
+	}
 	memset(matches, 0, MAX_GRAPHS_QUERY * sizeof(int));
-	strcpy_s(queryPath, size(qry) + 1, qry.c_str());
-	strcpy_s(dbPath, size(db) + 1, db.c_str());
+
 }
 
 void input()
-{
-	
+{	
 	ReadQuery(queryPath);
 	//le o(s) grafo(s) modelo(s)
 	ReadDB(dbPath);
@@ -121,7 +126,7 @@ void ReadDB(char *path)
 }
 void ReadQuery(char *path)
 {
-	
+	printf("read query");
 	ReadFile(path, QueryGraphSize, MAX_GRAPHS_QUERY);
 
 	for (int i = 0; i < QueryGraphSize;i++) {
@@ -134,12 +139,24 @@ void ReadQuery(char *path)
 	}
 
 }
+
+__device__
+void initGraph(Graph &src, Graph &dest) {
+	dest.en = src.en;
+	dest.vn = src.vn;
+
+	for (int k = 0; k < src.en;k++) {
+		dest.edge[k] = src.edge[k];
+		dest.head[k] = src.head[k];
+	}
+
+	for (int k = 0; k < src.vn;k++) {
+		dest.vtx[k] = src.vtx[k];
+	}
+}
 __device__
 void GenRevGraph(const Graph &src, Graph &dst)
 {
-	dst = Graph();
-	dst.aloca();
-
 	for (int i = 0; i < src.vn; i++)
 		dst.addv(src.vtx[i].id, src.vtx[i].label);
 
@@ -437,16 +454,16 @@ bool check(const State &s, int a, int b, VetAuxiliares &vetAux, Graph &pat, Grap
 }
 
 __device__
-int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux, Graph &pat, Graph &g)
+int GenPairs(const State &s, int allPairsFirst[], int allPairsSecond[], VetAuxiliares &vetAux, Graph &pat, Graph &g)
 {
 	int sizeAllPairs = 0;
 
 	CalDFSVec(s, vetAux, pat, g);
 
-	if (vetAux.sizeTout1 > 0 && vetAux.sizeTout2 > 0) {
+	/*if (vetAux.sizeTout1 > 0 && vetAux.sizeTout2 > 0) {
 		allPairsFirst = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
 		allPairsSecond = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
-	}
+	}*/
 
 	for (int i = 0; i < (int)vetAux.sizeTout1; i++)
 		for (int j = 0; j < (int)vetAux.sizeTout2; j++) {
@@ -458,10 +475,10 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 		return sizeAllPairs;
 	}
 
-	if (vetAux.sizeTin1 > 0 && vetAux.sizeTin2 > 0) {
+	/*if (vetAux.sizeTin1 > 0 && vetAux.sizeTin2 > 0) {
 		allPairsFirst = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
 		allPairsSecond = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
-	}
+	}*/
 
 	for (int i = 0; i < (int)vetAux.sizeTin1; i++)
 		for (int j = 0; j < (int)vetAux.sizeTin2; j++) {
@@ -484,23 +501,23 @@ int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxil
 		if (s.core2[i] == -1)
 			temp2[sizeTemp2++] = i;
 
-	allPairsFirst = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
-	allPairsSecond = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
+	/*allPairsFirst = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
+	allPairsSecond = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));*/
 
 	for (int i = 0; i < sizeTemp1; i++)
 		for (int j = 0; j < sizeTemp2; j++) {
 			allPairsFirst[sizeAllPairs] = temp1[i], allPairsSecond[sizeAllPairs++] = temp2[j];
 		}
 
-	return sizeAllPairs;	
+	return sizeAllPairs;
 }
 __device__
-int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
+int CheckPairs(const State &s, int allPairsFirst[], int allPairsSecond[], int candiPairsFirst[], int candiPairsSecond[], int sizeAllPairs, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
 	int sizeCandiPairs = 0;
 
-	candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
-	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));
+	/*candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
+	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));*/
 
 	for (int i = 0; i < sizeAllPairs; i++) {
 		if (check(s, allPairsFirst[i], allPairsSecond[i], vetAux, pat, g, revpat, revg)) {
@@ -754,8 +771,8 @@ void CalCheckVec(int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Grap
 __device__
 bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	int *allPairsFirst, *allPairsSecond;
-	int *candiPairsFirst, *candiPairsSecond;
+	int allPairsFirst[maxe], allPairsSecond[maxe];
+	int candiPairsFirst[maxe], candiPairsSecond[maxe];
 	
 	// Matched
 	if ((int)s.TAM == pat.vn)
@@ -772,7 +789,7 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux, pat, g, revpat, revg);
 
 	// For tmp dfs store
-	int *vecFirst, *vecSecond;
+	int vecFirst[999], vecSecond[999];
 	int sizeVec = sizeCandiPairs;
 	int m1t[maxv], m2t[maxv];
 	int tin1t[maxv], tin2t[maxv];
@@ -781,20 +798,17 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 	int ns1t[maxv], ns2t[maxv];
 	int t1t[maxv], t2t[maxv];
 
-	vecFirst = (int*)malloc(sizeCandiPairs * sizeof(int));
-	vecSecond = (int*)malloc(sizeCandiPairs * sizeof(int));
-
+	/*vecFirst = (int*)malloc(sizeCandiPairs * sizeof(int));
+	vecSecond = (int*)malloc(sizeCandiPairs * sizeof(int));*/
 	memcpy(vecFirst, candiPairsFirst, sizeCandiPairs * sizeof(int));
 	memcpy(vecSecond, candiPairsSecond, sizeCandiPairs * sizeof(int));
 
 	bool ret = false;
-	
 	for (int i = 0;i < sizeVec;i++)
 	{
 		State ns = s;
 
 		int a = vecFirst[i], b = vecSecond[i];
-		
 		UpdateState(ns, a, b, pat, g, revpat, revg);
 
 		memcpy(m1t, vetAux.m1, maxv * sizeof(int));
@@ -838,12 +852,12 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 		if (ret) break;
 	}
 
-	free(allPairsFirst);
+	/*free(allPairsFirst);
 	free(allPairsSecond);
 	free(candiPairsFirst);
 	free(candiPairsSecond);
 	free(vecFirst);
-	free(vecSecond);
+	free(vecSecond);*/
 
 	if (ret)
 		return 1;
@@ -853,28 +867,8 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 __device__
 bool query(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	return dfs(s, vetAux, pat, g, revpat, revg);
+	return dfs(s, vetAux, pat, g, revpat, revg);	
 }
-__device__
-Graph copyGraph(Graph &graphSource) {
-	Graph graphDest;
-	graphDest.aloca();
-
-	graphSource.en = graphDest.en;
-	graphSource.vn = graphDest.vn;
-
-	for (int j = 0; j < graphSource.en;j++) {
-		graphDest.edge[j] = graphSource.edge[j];
-		graphDest.head[j] = graphSource.head[j];
-	}
-
-	for (int j = 0; j < graphSource.vn;j++) {
-		graphDest.vtx[j] = graphSource.vtx[j];
-	}
-
-	return graphDest;
-}
-
 
 //As discussed in detail in Multiprocessor Level, the fewer registers a kernel uses, the more threads and thread blocks are likely to reside
 //on a multiprocessor, which can improve performance.
@@ -906,8 +900,16 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, int sizeQuer
 		s.init();
 
 		VetAuxiliares vetAux;
+		Vertex vtxPat[maxv], vtxRevPat[maxv];
+		Edge edgePat[maxe], edgeRevPat[maxe];
+		int headPat[maxe], headRevPat[maxe];
 
-		pat.aloca();
+		pat = Graph();		
+		pat.vtx  = vtxPat;
+		pat.edge = edgePat;
+		pat.head = headPat;
+		pat.init();
+
 		pat.en = QueryGraph[j].en;
 		pat.vn = QueryGraph[j].vn;
 
@@ -919,6 +921,12 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, int sizeQuer
 		for (int k = 0; k < QueryGraph[j].vn;k++) {
 			pat.vtx[k] = QueryGraph[j].vtx[k];
 		}
+		
+		revpat = Graph();		
+		revpat.vtx = vtxRevPat;
+		revpat.edge = edgeRevPat;
+		revpat.head = headRevPat;
+		revpat.init();
 
 		GenRevGraph(pat, revpat);
 
@@ -926,43 +934,33 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, int sizeQuer
 		{
 			if (pat.vn > DBGraph[x].vn || pat.en > DBGraph[x].en) continue;
 
-			g.aloca();
-			g.en = DBGraph[x].en;
-			g.vn = DBGraph[x].vn;
+			//printf("x => %d \n", x);
 
-			for (int k = 0; k < DBGraph[x].en;k++) {
-				g.edge[k] = DBGraph[x].edge[k];
-				g.head[k] = DBGraph[x].head[k];
-			}
+			g = Graph(), revg = Graph();
+			Vertex vtxG[maxv], vtxRevG[maxv];
+			Edge edgeG[maxe], edgeRevG[maxe];
+			int headG[maxe], headRevg[maxe];
 
-			for (int k = 0; k < DBGraph[x].vn;k++) {
-				g.vtx[k] = DBGraph[x].vtx[k];
-			}
+			g.vtx = vtxG;
+			g.edge = edgeG;
+			g.head = headG;
+			g.init();
+			initGraph(DBGraph[x], g);
 
 			//printf("x => %d pat.vn %d g.vn %d pat.en %d g.en %d \n", x, pat.vn, g.vn, pat.en, g.en);
-
+						
+			revg.vtx  = vtxRevG;
+			revg.edge = edgeRevG;
+			revg.head = headRevg;
+			revg.init();
 			GenRevGraph(g, revg);
-
+			
 			if (query(s, vetAux, pat, g, revpat, revg)) // Matched
 			{
 				atomicAdd(&dev_matches[j], 1);
 			}
-
-			free(revg.head);
-			free(revg.vtx);
-			free(revg.edge);
-
-			free(g.head);
-			free(g.vtx);
-			free(g.edge);
-
 		}
-
 		controle[init]++;
-
-		free(revpat.head);
-		free(revpat.vtx);
-		free(revpat.edge);
 	}
 	
 }
@@ -985,7 +983,7 @@ void cudaShowLimit() {
 	}	
 	//printf("cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
 
-	limit = 1024 * 200;
+	limit = 1024 * 128;
 
 	cudaDeviceSetLimit(cudaLimitStackSize, limit);	
 
@@ -1055,7 +1053,7 @@ void beforeSolve() {
 
 	
 	for (int i = 0; i < QueryGraphSize;i++) {
-		//printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
+		printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
 	}
 
 
@@ -1080,10 +1078,11 @@ Error:
 int main(int argc, char* argv[])
 {
 	if (argc == 3) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]);
-	if (argc == 4) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3];
-		
+	if (argc == 4) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3];		
+	if (argc == 5) NBLOCKS = atoi(argv[1]), NTHREADS = atoi(argv[2]), queryPath = argv[3], dbPath = argv[4];
+
 	init();
-	input();
+	input();	
 	beforeSolve();	
 }
 
