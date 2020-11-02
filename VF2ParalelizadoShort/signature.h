@@ -17,9 +17,9 @@ void CalDFSVec(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g);
 __device__
 bool check(const State &s, int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg);
 __device__
-int GenPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, VetAuxiliares &vetAux, Graph &pat, Graph &g);
+int GenPairs(const State &s, int *allPairsFirst, int *allPairsSecond, VetAuxiliares &vetAux, Graph &pat, Graph &g);
 __device__
-int CheckPairs(const State &s, int *&allPairsFirst, int *&allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux);
+int CheckPairs(const State &s, int *allPairsFirst, int *allPairsSecond, int *&candiPairsFirst, int *&candiPairsSecond, int sizeAllPairs, VetAuxiliares &vetAux);
 __device__
 void UpdateState(State &s, int a, int b, Graph &pat, Graph &g, Graph &revpat, Graph &revg);
 __device__

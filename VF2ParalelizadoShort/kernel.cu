@@ -1,10 +1,10 @@
 const static int maxv = 40;
 const static int maxe = 80;
 const int MAX_GRAPHS_DB = 8192;
-const int MAX_GRAPHS_QUERY = 2;
-int NBLOCKS = 1, NTHREADS = 1;
-const int maxThreadsPerBlock = 256, minBlocksPerMultiprocessor = 8;
-const int MAX = 512;
+const int MAX_GRAPHS_QUERY = 50;
+int NBLOCKS = 32, NTHREADS = 32;
+const int maxThreadsPerBlock = 512, minBlocksPerMultiprocessor = 8;
+const int MAX = 99999;
 __device__
 int controle[MAX];
 
@@ -26,9 +26,8 @@ char *queryPath, *dbPath;
 
 void init()
 {
-	string qry = "data/query/Q4.min.my";
-	string db = "data/db/Q8192.data";
-	//string db = "data/db/mygraphdb.min.data";
+	string qry = "data/query/Q4.min.min.my";	
+	string db = "data/db/mygraphdb.min.data";
 
 	
 	if (queryPath == NULL) {		
@@ -41,7 +40,6 @@ void init()
 		strcpy_s(dbPath, size(db) + 1, db.c_str());		
 	}
 	memset(matches, 0, MAX_GRAPHS_QUERY * sizeof(int));
-
 }
 
 void input()
@@ -62,7 +60,7 @@ void ReadFile(char *path, int &graphSize, int MAX_GRAPHS)
 	fin.open(path);
 
 	if (!fin.is_open()) {
-		printf("Arquivo %s nao encontrado \n", path);
+		cout << "Arquivo %s nao encontrado" << path << endl;
 		return;
 	}
 
@@ -106,7 +104,7 @@ void ReadFile(char *path, int &graphSize, int MAX_GRAPHS)
 	}
 
 	if (!eof)
-		printf("Nao foi encontrado o fim do arquivo (t #-1) \n");
+		cout << "Nao foi encontrado o fim do arquivo (t #-1)" << endl;
 
 	fin.close();
 }
@@ -126,7 +124,6 @@ void ReadDB(char *path)
 }
 void ReadQuery(char *path)
 {
-	printf("read query");
 	ReadFile(path, QueryGraphSize, MAX_GRAPHS_QUERY);
 
 	for (int i = 0; i < QueryGraphSize;i++) {
@@ -331,25 +328,25 @@ Graph* alocaGraph(Graph *Grafo, int GraphSize) {
 		int *head;
 
 		if (cudaMalloc((void **)&vtx, Grafo[k].vn * sizeof(Vertex)) != cudaSuccess) {
-			printf("ERROR: Não foi possível alocar os vertices \n");
+			cout << "ERROR: Não foi possível alocar os vertices " << endl;
 		}
 		if (cudaMalloc((void **)&edge, Grafo[k].en * sizeof(Edge)) != cudaSuccess) {
-			printf("ERROR: Não foi possível alocar os vertices \n");
+			cout << "ERROR: Não foi possível alocar os vertices" << endl;
 		}
 		if (cudaMalloc((void **)&head, maxe * sizeof(int)) != cudaSuccess) {
-			printf("ERROR: Não foi possível alocar o head \n");
+			cout << "ERROR: Não foi possível alocar o head " << endl;
 		}
 
 		if (cudaMemcpy(vtx, Grafo[k].vtx, Grafo[k].vn * sizeof(Vertex), cudaMemcpyHostToDevice) != cudaSuccess) {
-			printf("ERROR: Não foi possível copiar os vertices \n");
+			cout << "ERROR: Não foi possível copiar os vertices" << endl;
 		}
 
 		if (cudaMemcpy(edge, Grafo[k].edge, Grafo[k].en * sizeof(Edge), cudaMemcpyHostToDevice) != cudaSuccess) {
-			printf("ERROR: Não foi possível copiar as arestas \n");
+			cout << "ERROR: Não foi possível copiar as arestas " << endl;
 		}
 
 		if (cudaMemcpy(head, Grafo[k].head, maxe * sizeof(int), cudaMemcpyHostToDevice) != cudaSuccess) {
-			printf("ERROR: Não foi possível copiar o head \n");
+			cout << "ERROR: Não foi possível copiar o head" << endl;
 		}
 
 		GraphHost[k].vtx = vtx;
@@ -427,7 +424,7 @@ void CalDFSVec(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g)
 
 	vetAux.sizeT2 = Union(vetAux.tin1, vetAux.tout2, vetAux.t2, vetAux.sizeTin1, vetAux.sizeTout2);
 
-	int tmp[maxv], sizeTmp;
+	int tmp[500], sizeTmp;
 
 	sizeTmp = Difference(vetAux.n1, vetAux.m1, tmp, vetAux.sizeN1, vetAux.sizeM1);
 
@@ -460,11 +457,6 @@ int GenPairs(const State &s, int allPairsFirst[], int allPairsSecond[], VetAuxil
 
 	CalDFSVec(s, vetAux, pat, g);
 
-	/*if (vetAux.sizeTout1 > 0 && vetAux.sizeTout2 > 0) {
-		allPairsFirst = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
-		allPairsSecond = (int*)malloc(vetAux.sizeTout1 * vetAux.sizeTout2 * sizeof(int));
-	}*/
-
 	for (int i = 0; i < (int)vetAux.sizeTout1; i++)
 		for (int j = 0; j < (int)vetAux.sizeTout2; j++) {
 			allPairsFirst[sizeAllPairs] = vetAux.tout1[i], allPairsSecond[sizeAllPairs++] = vetAux.tout2[j];
@@ -474,12 +466,7 @@ int GenPairs(const State &s, int allPairsFirst[], int allPairsSecond[], VetAuxil
 	{
 		return sizeAllPairs;
 	}
-
-	/*if (vetAux.sizeTin1 > 0 && vetAux.sizeTin2 > 0) {
-		allPairsFirst = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
-		allPairsSecond = (int*)malloc(vetAux.sizeTin1 * vetAux.sizeTin2 * sizeof(int));
-	}*/
-
+	
 	for (int i = 0; i < (int)vetAux.sizeTin1; i++)
 		for (int j = 0; j < (int)vetAux.sizeTin2; j++) {
 			allPairsFirst[sizeAllPairs] = vetAux.tin1[i], allPairsSecond[sizeAllPairs++] = vetAux.tin2[j];
@@ -490,7 +477,7 @@ int GenPairs(const State &s, int allPairsFirst[], int allPairsSecond[], VetAuxil
 		return sizeAllPairs;
 	}
 
-	int temp1[maxv], temp2[maxv];
+	int temp1[500], temp2[500];
 	int sizeTemp1 = 0, sizeTemp2 = 0;
 
 	for (int i = 0; i < pat.vn; i++)
@@ -501,12 +488,10 @@ int GenPairs(const State &s, int allPairsFirst[], int allPairsSecond[], VetAuxil
 		if (s.core2[i] == -1)
 			temp2[sizeTemp2++] = i;
 
-	/*allPairsFirst = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));
-	allPairsSecond = (int*)malloc(sizeTemp1 * sizeTemp2 * sizeof(int));*/
-
 	for (int i = 0; i < sizeTemp1; i++)
 		for (int j = 0; j < sizeTemp2; j++) {
-			allPairsFirst[sizeAllPairs] = temp1[i], allPairsSecond[sizeAllPairs++] = temp2[j];
+			allPairsFirst[sizeAllPairs] = temp1[i];
+			allPairsSecond[sizeAllPairs++] = temp2[j];
 		}
 
 	return sizeAllPairs;
@@ -515,9 +500,6 @@ __device__
 int CheckPairs(const State &s, int allPairsFirst[], int allPairsSecond[], int candiPairsFirst[], int candiPairsSecond[], int sizeAllPairs, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
 	int sizeCandiPairs = 0;
-
-	/*candiPairsFirst = (int*)malloc(sizeAllPairs * sizeof(int));
-	candiPairsSecond = (int*)malloc(sizeAllPairs * sizeof(int));*/
 
 	for (int i = 0; i < sizeAllPairs; i++) {
 		if (check(s, allPairsFirst[i], allPairsSecond[i], vetAux, pat, g, revpat, revg)) {
@@ -771,8 +753,8 @@ void CalCheckVec(int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Grap
 __device__
 bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	int allPairsFirst[maxe], allPairsSecond[maxe];
-	int candiPairsFirst[maxe], candiPairsSecond[maxe];
+	int allPairsFirst[500], allPairsSecond[500];
+	int candiPairsFirst[500], candiPairsSecond[500];
 	
 	// Matched
 	if ((int)s.TAM == pat.vn)
@@ -785,21 +767,14 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 
 	// Generate Pair(n,m)
 	int sizeAllPairs = GenPairs(s, allPairsFirst, allPairsSecond, vetAux, pat, g);
+
 	// Check allPairs, get candiPairs
 	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux, pat, g, revpat, revg);
 
 	// For tmp dfs store
 	int vecFirst[999], vecSecond[999];
-	int sizeVec = sizeCandiPairs;
-	int m1t[maxv], m2t[maxv];
-	int tin1t[maxv], tin2t[maxv];
-	int tout1t[maxv], tout2t[maxv];
-	int n1t[maxv], n2t[maxv];
-	int ns1t[maxv], ns2t[maxv];
-	int t1t[maxv], t2t[maxv];
+	int sizeVec = sizeCandiPairs;	
 
-	/*vecFirst = (int*)malloc(sizeCandiPairs * sizeof(int));
-	vecSecond = (int*)malloc(sizeCandiPairs * sizeof(int));*/
 	memcpy(vecFirst, candiPairsFirst, sizeCandiPairs * sizeof(int));
 	memcpy(vecSecond, candiPairsSecond, sizeCandiPairs * sizeof(int));
 
@@ -809,55 +784,12 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 		State ns = s;
 
 		int a = vecFirst[i], b = vecSecond[i];
-		UpdateState(ns, a, b, pat, g, revpat, revg);
-
-		memcpy(m1t, vetAux.m1, maxv * sizeof(int));
-		memcpy(m2t, vetAux.m2, maxv * sizeof(int));
-
-		memcpy(tin1t, vetAux.tin1, maxv * sizeof(int));
-		memcpy(tin2t, vetAux.tin2, maxv * sizeof(int));
-
-		memcpy(tout1t, vetAux.tout1, maxv * sizeof(int));
-		memcpy(tout2t, vetAux.tout2, maxv * sizeof(int));
-
-		memcpy(n1t, vetAux.n1, maxv * sizeof(int));
-		memcpy(n2t, vetAux.n2, maxv * sizeof(int));
-
-		memcpy(ns1t, vetAux.ns1, maxv * sizeof(int));
-		memcpy(ns2t, vetAux.ns2, maxv * sizeof(int));
-
-		memcpy(t1t, vetAux.t1, maxv * sizeof(int));
-		memcpy(t2t, vetAux.t2, maxv * sizeof(int));
+		UpdateState(ns, a, b, pat, g, revpat, revg);		
 		
-		ret = dfs(ns, vetAux, pat, g, revpat, revg);		
-
-		memcpy(vetAux.m1, m1t, maxv * sizeof(int));
-		memcpy(vetAux.m2, m2t, maxv * sizeof(int));
-
-		memcpy(vetAux.tin1, tin1t, maxv * sizeof(int));
-		memcpy(vetAux.tin2, tin2t, maxv * sizeof(int));
-
-		memcpy(vetAux.tout1, tout1t, maxv * sizeof(int));
-		memcpy(vetAux.tout2, tout2t, maxv * sizeof(int));
-
-		memcpy(vetAux.n1, n1t, maxv * sizeof(int));
-		memcpy(vetAux.n2, n2t, maxv * sizeof(int));
-
-		memcpy(vetAux.ns1, ns1t, maxv * sizeof(int));
-		memcpy(vetAux.ns2, ns2t, maxv * sizeof(int));
-
-		memcpy(vetAux.t1, t1t, maxv * sizeof(int));
-		memcpy(vetAux.t2, t2t, maxv * sizeof(int));
+		ret = dfs(ns, vetAux, pat, g, revpat, revg);			
 
 		if (ret) break;
 	}
-
-	/*free(allPairsFirst);
-	free(allPairsSecond);
-	free(candiPairsFirst);
-	free(candiPairsSecond);
-	free(vecFirst);
-	free(vecSecond);*/
 
 	if (ret)
 		return 1;
@@ -881,12 +813,7 @@ solve(int NBLOCKS, int NTHREADS, Graph *QueryGraph, Graph *DBGraph, int sizeQuer
 {
 	
 	memset(controle, 0, MAX * sizeof(int));
-	
-	/*printf(" QueryGraph \n");
-	printGraph(QueryGraph, sizeQuery);
-	printf("\n\n\n DBGraph \n\n\n");
-	printGraph(DBGraph, sizeDB);*/
-
+		
 	int init = threadIdx.x + blockIdx.x * blockDim.x;
 		
 	while (controle[init] < sizeQuery) {
@@ -983,7 +910,7 @@ void cudaShowLimit() {
 	}	
 	//printf("cudaLimitMallocHeapSize: %u\n", (unsigned)limit);
 
-	limit = 1024 * 128;
+	limit = 1024 * 200;	
 
 	cudaDeviceSetLimit(cudaLimitStackSize, limit);	
 
@@ -1009,12 +936,9 @@ void beforeSolve() {
 	Graph *DBGraphCUDA, *QueryGraphCUDA;
 	unsigned int *MatchesCUDA;
 	cudaError_t cudaStatus;	
-	float time;
-	cudaEvent_t start, stop;
-
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, 0);
+	time_t stTime, edTime;	
+	double dur;
+	stTime = clock();
 
 	cudaShowLimit();
 
@@ -1030,43 +954,41 @@ void beforeSolve() {
 	cudaStatus = cudaMemcpy(MatchesCUDA, matches, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
 
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "MatchesCUDA h-> d cudaMemcpy failed!");
+		cout << stderr << "MatchesCUDA h-> d cudaMemcpy failed!"<< endl;
 		goto Error;
 	}
 
-	printf("Processando...\nBlocks %d Threads %d Modelos %d Grafos %d \n", NBLOCKS, NTHREADS, DBGraphSize, QueryGraphSize);
+	cout << "Processando...\nBlocks " << NBLOCKS  << " Threads "<< NTHREADS << " Modelos " << DBGraphSize  << " Grafos " << QueryGraphSize << endl;
 
 	solve << <NBLOCKS, NTHREADS >> > (NBLOCKS, NTHREADS, QueryGraphCUDA, DBGraphCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
 	
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
+		cout << stderr << " cudaDeviceSynchronize returned error code after launching addKernel! " << cudaStatus << endl;
 		goto Error;
 	}
 
 	cudaStatus = cudaMemcpy(matches, MatchesCUDA, MAX_GRAPHS_QUERY * sizeof(int), cudaMemcpyDeviceToHost);
 	
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "MatchesCUDA d->h cudaMemcpy failed!");
+		cout << stderr << " MatchesCUDA d->h cudaMemcpy failed!" << endl;
 		goto Error;
 	}
 
 	
 	for (int i = 0; i < QueryGraphSize;i++) {
-		printf("%s %d Matches found %d \n", queryPath, i, matches[i]);
+		cout << queryPath << " " << i << " Matches found " << matches[i] << endl;
 	}
 
-
-	cudaEventRecord(stop, 0);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&time, start, stop);
-
-	printf("Time elapsed %.2f \n", time);	
+	edTime = clock();
+	dur = (double)(edTime - stTime) / 1000.0;
+	
+	cout << "Time elapsed " << dur << endl;	
 
 	// Check for any errors launching the kernel
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
-		fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		cout << stderr << "addKernel launch failed: " << cudaGetErrorString(cudaStatus) << endl;
 		goto Error;
 	}
 
