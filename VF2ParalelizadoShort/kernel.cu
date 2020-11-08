@@ -26,7 +26,7 @@ char *queryPath, *dbPath;
 
 void init()
 {
-	string qry = "data/query/Q4.min.min.my";	
+	string qry = "data/query/Q12.min.my";	
 	string db = "data/db/mygraphdb.min.data";
 
 	
@@ -317,7 +317,7 @@ int Intersection(int arr1[], int arr2[], int arr3[], int n1, int n2)
 	return x;
 }
 
-Graph* alocaGraph(Graph *Grafo, int GraphSize) {
+Graph* alocaGraph(Graph *Grafo, int GraphSize, cudaStream_t &stream) {
 	Graph *GraphHost, *GraphCUDA;
 
 	GraphHost = (Graph*)malloc(GraphSize * sizeof(Graph));
@@ -360,7 +360,7 @@ Graph* alocaGraph(Graph *Grafo, int GraphSize) {
 	//printf("GraphSize %d Graph mem. usage => %d \nGraph size %d \nVertex size => %d\nEdge size => %d \n", GraphSize, sizeofGrafo,sizeof(Graph), sizeof(Vertex), sizeof(Edge));
 
 	cudaMalloc((void **)&GraphCUDA, GraphSize * sizeof(Graph));
-	cudaMemcpy(GraphCUDA, GraphHost, (sizeof(Graph) * GraphSize), cudaMemcpyHostToDevice);
+	cudaMemcpyAsync(GraphCUDA, GraphHost, (sizeof(Graph) * GraphSize), cudaMemcpyHostToDevice, stream);
 
 	return GraphCUDA;
 }
@@ -753,9 +753,6 @@ void CalCheckVec(int a, int b, VetAuxiliares &vetAux, Graph &pat, Graph &g, Grap
 __device__
 bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &revpat, Graph &revg)
 {
-	int allPairsFirst[500], allPairsSecond[500];
-	int candiPairsFirst[500], candiPairsSecond[500];
-	
 	// Matched
 	if ((int)s.TAM == pat.vn)
 	{		
@@ -764,7 +761,7 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 			return 1;
 		}		
 	}
-
+	int allPairsFirst[300], allPairsSecond[300], candiPairsFirst[300], candiPairsSecond[300];
 	// Generate Pair(n,m)
 	int sizeAllPairs = GenPairs(s, allPairsFirst, allPairsSecond, vetAux, pat, g);
 
@@ -772,7 +769,7 @@ bool dfs(const State &s, VetAuxiliares &vetAux, Graph &pat, Graph &g, Graph &rev
 	int sizeCandiPairs = CheckPairs(s, allPairsFirst, allPairsSecond, candiPairsFirst, candiPairsSecond, sizeAllPairs, vetAux, pat, g, revpat, revg);
 
 	// For tmp dfs store
-	int vecFirst[999], vecSecond[999];
+	int vecFirst[399], vecSecond[399];
 	int sizeVec = sizeCandiPairs;	
 
 	memcpy(vecFirst, candiPairsFirst, sizeCandiPairs * sizeof(int));
@@ -933,22 +930,24 @@ void cudaShowLimit() {
 }
 
 void beforeSolve() {
-	Graph *DBGraphCUDA, *QueryGraphCUDA;
+	Graph *DBGraphCUDA, *QueryGraphCUDAStream1, *QueryGraphCUDAStream2;
 	unsigned int *MatchesCUDA;
 	cudaError_t cudaStatus;	
 	time_t stTime, edTime;	
 	double dur;
+	cudaStream_t stream1, stream2;
 	stTime = clock();
 
 	cudaShowLimit();
 
-	QueryGraphCUDA = alocaGraph(QueryGraph, QueryGraphSize);
+	QueryGraphSize = QueryGraphSize / 2;
+	QueryGraphCUDAStream1 = alocaGraph(QueryGraph, QueryGraphSize, stream1);
+	QueryGraphCUDAStream2 = alocaGraph(QueryGraph, QueryGraphSize, stream2);
+
 	DBGraphCUDA = alocaGraph(DBGraph, DBGraphSize);
 	
 	int sizeofGrafo = DBGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
 	sizeofGrafo+= QueryGraphSize * (sizeof(Graph) + (maxv * sizeof(Vertex)) + (2 * maxe * sizeof(Edge)));
-
-	//printf("CUDA mem. usage => %d \n", sizeofGrafo);
 
 	cudaMalloc((void **)&MatchesCUDA, MAX_GRAPHS_QUERY * sizeof(int));
 	cudaStatus = cudaMemcpy(MatchesCUDA, matches, (sizeof(int) * MAX_GRAPHS_QUERY), cudaMemcpyHostToDevice);
@@ -960,8 +959,9 @@ void beforeSolve() {
 
 	cout << "Processando...\nBlocks " << NBLOCKS  << " Threads "<< NTHREADS << " Modelos " << DBGraphSize  << " Grafos " << QueryGraphSize << endl;
 
-	solve << <NBLOCKS, NTHREADS >> > (NBLOCKS, NTHREADS, QueryGraphCUDA, DBGraphCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
-	
+	solve << <NBLOCKS, NTHREADS 0, stream1 >> > (NBLOCKS, NTHREADS, QueryGraphCUDAStream1, DBGraphCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
+	solve << <NBLOCKS, NTHREADS 0, stream2 >> > (NBLOCKS, NTHREADS, QueryGraphCUDAStream2, DBGraphCUDA, QueryGraphSize, DBGraphSize, MatchesCUDA);
+		
 	cudaStatus = cudaDeviceSynchronize();
 	if (cudaStatus != cudaSuccess) {
 		cout << stderr << " cudaDeviceSynchronize returned error code after launching addKernel! " << cudaStatus << endl;
